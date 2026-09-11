@@ -63,6 +63,10 @@ model Project {
 
   // Relations
   tasks       Task[]
+
+  // Indexes backing frequent filtered queries per the app's dashboards:
+  // createdById: PM dashboard scoping — "show only projects I created"
+  @@index([createdById])
 }
 
 model Task {
@@ -93,6 +97,13 @@ model Task {
   @@index([status])
   // 4. dueDate: Fast sorting and range queries for deadline alerts, calendar views, and overdue batch jobs
   @@index([dueDate])
+  // 5. [projectId, status]: Composite index for the most common query pattern —
+  //    a project's board filtered by status — more efficient than combining
+  //    two single-column indexes for this specific access pattern
+  @@index([projectId, status])
+  // 6. [dueDate, status]: Backs the scheduled overdue-flagging job's query
+  //    (WHERE dueDate < now() AND status != DONE AND isOverdue = false)
+  @@index([dueDate, status])
 }
 
 model TaskActivityLog {
