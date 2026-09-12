@@ -1,5 +1,7 @@
 import { Router } from 'express';
 import authRoutes from './auth.routes.js';
+import projectRoutes from './project.routes.js';
+import taskRoutes from './task.routes.js';
 
 const router = Router();
 
@@ -11,4 +13,11 @@ router.get('/health', (_req, res) => {
 // Auth endpoints
 router.use('/auth', authRoutes);
 
+// Projects endpoints
+router.use('/projects', projectRoutes);
+
+// Tasks endpoints
+router.use('/tasks', taskRoutes);
+
 export default router;
+
