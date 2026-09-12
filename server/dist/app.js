@@ -22,6 +22,15 @@ const createApp = () => {
     // Parsers
     app.use(express_1.default.json());
     app.use((0, cookie_parser_1.default)(index_js_1.config.COOKIE_SECRET));
+    // Root welcome endpoint
+    app.get('/', (_req, res) => {
+        res.status(200).json({
+            service: 'Pulse Studio API',
+            status: 'running',
+            documentation: 'See /api/health for health check',
+            frontend: 'https://pulse-studio-olive.vercel.app',
+        });
+    });
     // Mount API routes
     app.use('/api', index_js_2.default);
     // 404 handler with structured response

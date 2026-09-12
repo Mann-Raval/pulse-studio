@@ -9,7 +9,8 @@ Pulse Studio is a high-velocity, real-time project and task management platform 
 ## 2. Live Demo
 
 - **Live Application (Frontend)**: [https://pulse-studio-olive.vercel.app](https://pulse-studio-olive.vercel.app)
-- **Production API & WebSocket Server (Backend)**: [https://pulse-studio-production-4459.up.railway.app](https://pulse-studio-production-4459.up.railway.app)
+- **Backend API**: [https://pulse-studio-production-4459.up.railway.app](https://pulse-studio-production-4459.up.railway.app)
+  *(This is an API server, not a browsable website — use `/api/health` or `/` to verify it's running, or interact with it through the live frontend above.)*
 
 > **Deployment Architecture Note**: The frontend and backend are hosted on decoupled infrastructure (Vercel and Railway, respectively). Vercel's serverless function runtime does not support persistent, stateful WebSocket connections. Therefore, the backend API, Socket.io engine, background cron scheduler, and PostgreSQL database run on Railway to guarantee uninterrupted, long-lived bidirectional streaming and presence tracking.
 

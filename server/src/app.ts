@@ -22,6 +22,16 @@ export const createApp = () => {
   app.use(express.json());
   app.use(cookieParser(config.COOKIE_SECRET));
 
+  // Root welcome endpoint
+  app.get('/', (_req, res) => {
+    res.status(200).json({
+      service: 'Pulse Studio API',
+      status: 'running',
+      documentation: 'See /api/health for health check',
+      frontend: 'https://pulse-studio-olive.vercel.app',
+    });
+  });
+
   // Mount API routes
   app.use('/api', apiRouter);
 
