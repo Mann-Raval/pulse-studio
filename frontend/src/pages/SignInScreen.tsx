@@ -17,8 +17,8 @@ export const SignInScreen: React.FC<SignInScreenProps> = ({
   const { login } = useAuth();
 
   const [showPassword, setShowPassword] = useState(false);
-  const [email, setEmail] = useState('admin@pulsestudio.io');
-  const [password, setPassword] = useState('password123');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -43,12 +43,6 @@ export const SignInScreen: React.FC<SignInScreenProps> = ({
     } finally {
       setIsLoading(false);
     }
-  };
-
-  const handleQuickFill = (demoEmail: string) => {
-    setEmail(demoEmail);
-    setPassword('password123');
-    setErrorMessage(null);
   };
 
   return (
@@ -84,48 +78,6 @@ export const SignInScreen: React.FC<SignInScreenProps> = ({
             </p>
           </div>
 
-          {/* Quick Demo Login Selectors */}
-          <div className="mb-5 p-3 rounded-sm bg-surface-container-low border border-outline-variant/50">
-            <span className="block text-[10px] font-mono text-outline uppercase tracking-wider mb-2">
-              Quick Select Demo Persona:
-            </span>
-            <div className="grid grid-cols-3 gap-2">
-              <button
-                type="button"
-                onClick={() => handleQuickFill('admin@pulsestudio.io')}
-                className={`px-2 py-1.5 rounded text-center text-xs font-mono transition-colors border ${
-                  email === 'admin@pulsestudio.io'
-                    ? 'bg-primary text-white border-primary'
-                    : 'bg-surface-container hover:bg-surface-container-high text-on-surface border-outline-variant/40'
-                }`}
-              >
-                👑 Admin
-              </button>
-              <button
-                type="button"
-                onClick={() => handleQuickFill('pm@pulsestudio.io')}
-                className={`px-2 py-1.5 rounded text-center text-xs font-mono transition-colors border ${
-                  email === 'pm@pulsestudio.io'
-                    ? 'bg-primary text-white border-primary'
-                    : 'bg-surface-container hover:bg-surface-container-high text-on-surface border-outline-variant/40'
-                }`}
-              >
-                📁 PM
-              </button>
-              <button
-                type="button"
-                onClick={() => handleQuickFill('dev@pulsestudio.io')}
-                className={`px-2 py-1.5 rounded text-center text-xs font-mono transition-colors border ${
-                  email === 'dev@pulsestudio.io'
-                    ? 'bg-primary text-white border-primary'
-                    : 'bg-surface-container hover:bg-surface-container-high text-on-surface border-outline-variant/40'
-                }`}
-              >
-                💻 Dev
-              </button>
-            </div>
-          </div>
-
           {errorMessage && (
             <div className="mb-4 p-3 rounded-sm bg-error/10 border border-error/30 text-error text-xs flex items-center gap-2">
               <span className="material-symbols-outlined text-sm">error</span>
@@ -141,6 +93,7 @@ export const SignInScreen: React.FC<SignInScreenProps> = ({
                 <input
                   className="w-full h-9 pl-9 pr-3 bg-surface-container-low rounded-sm border border-outline-variant/60 text-on-surface text-xs focus:outline-none focus:border-primary"
                   type="email"
+                  placeholder="you@company.com"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   required
@@ -151,9 +104,6 @@ export const SignInScreen: React.FC<SignInScreenProps> = ({
             <div>
               <div className="flex items-center justify-between mb-1.5">
                 <label className="block text-[11px] font-mono text-on-surface">Password</label>
-                <span className="text-[11px] font-mono text-primary hover:underline cursor-pointer">
-                  Default: password123
-                </span>
               </div>
               <div className="relative flex items-center">
                 <span className="material-symbols-outlined absolute left-3 text-outline text-base">lock</span>
