@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.updateTask = exports.updateTaskStatus = exports.getTaskById = exports.getProjectTasks = exports.createTask = void 0;
+exports.updateTask = exports.updateTaskStatus = exports.getTaskById = exports.listTasks = exports.getProjectTasks = exports.createTask = void 0;
 const client_1 = require("@prisma/client");
 const prisma_js_1 = require("../lib/prisma.js");
 const index_js_1 = require("../socket/index.js");
@@ -57,8 +57,8 @@ const createTask = async (req, res, next) => {
                 return;
             }
         }
-        // Atomic transaction: create Task + create Notification for developer if assigned
-        const { task: createdTask, notification } = await prisma_js_1.prisma.$transaction(async (tx) => {
+        // Atomic transaction: create Task + activity log + notification for developer if assigned
+        const { task: createdTask, notification, activityLog } = await prisma_js_1.prisma.$transaction(async (tx) => {
             const task = await tx.task.create({
                 data: {
                     projectId,
@@ -78,6 +78,19 @@ const createTask = async (req, res, next) => {
                     },
                 },
             });
+            const log = await tx.taskActivityLog.create({
+                data: {
+                    taskId: task.id,
+                    changedById: userId,
+                    fromStatus: task.status,
+                    toStatus: task.status,
+                },
+                include: {
+                    changedBy: {
+                        select: { id: true, name: true, email: true, role: true },
+                    },
+                },
+            });
             let createdNotification = null;
             if (assignedToId) {
                 createdNotification = await tx.notification.create({
@@ -89,9 +102,23 @@ const createTask = async (req, res, next) => {
                     },
                 });
             }
-            return { task, notification: createdNotification };
+            return { task, notification: createdNotification, activityLog: log };
         });
         // Real-time WebSocket emission after successful commit
+        (0, index_js_1.broadcastTaskActivity)({
+            id: activityLog.id,
+            taskId: createdTask.id,
+            taskTitle: createdTask.title,
+            projectId: createdTask.projectId,
+            projectName: createdTask.project.name,
+            changedBy: {
+                id: activityLog.changedBy.id,
+                name: activityLog.changedBy.name,
+            },
+            fromStatus: activityLog.fromStatus,
+            toStatus: activityLog.toStatus,
+            changedAt: activityLog.changedAt,
+        }, createdTask.assignedToId);
         if (notification && assignedToId) {
             (0, index_js_1.broadcastNotification)(assignedToId, notification);
         }
@@ -200,6 +227,88 @@ const getProjectTasks = async (req, res, next) => {
     }
 };
 exports.getProjectTasks = getProjectTasks;
+const listTasks = async (req, res, next) => {
+    try {
+        const userRole = req.user.role;
+        const userId = req.user.id;
+        const { status, priority, dueBefore, dueAfter, assignedToId, projectId, isOverdue } = req.query;
+        const page = Math.max(1, Number(req.query.page) || 1);
+        const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 20));
+        const skip = (page - 1) * limit;
+        // Database-level role-scoping:
+        // - DEVELOPER: ONLY sees tasks assigned to their own user id
+        // - PM: sees tasks belonging to projects created by this PM
+        // - ADMIN: sees all tasks
+        const where = {
+            ...(userRole === client_1.Role.DEVELOPER ? { assignedToId: userId } : {}),
+            ...(userRole === client_1.Role.PM ? { project: { createdById: userId } } : {}),
+        };
+        if (projectId) {
+            if (userRole === client_1.Role.PM) {
+                where.projectId = projectId;
+                where.project = { createdById: userId };
+            }
+            else if (userRole === client_1.Role.ADMIN || userRole === client_1.Role.DEVELOPER) {
+                where.projectId = projectId;
+            }
+        }
+        if (status) {
+            where.status = status;
+        }
+        if (priority) {
+            where.priority = priority;
+        }
+        if (isOverdue !== undefined) {
+            where.isOverdue = isOverdue === 'true';
+        }
+        const dueDateFilter = {};
+        if (dueBefore) {
+            dueDateFilter.lte = new Date(dueBefore);
+        }
+        if (dueAfter) {
+            dueDateFilter.gte = new Date(dueAfter);
+        }
+        if (Object.keys(dueDateFilter).length > 0) {
+            where.dueDate = dueDateFilter;
+        }
+        if (assignedToId && userRole !== client_1.Role.DEVELOPER) {
+            where.assignedToId = assignedToId;
+        }
+        const [total, tasks] = await Promise.all([
+            prisma_js_1.prisma.task.count({ where }),
+            prisma_js_1.prisma.task.findMany({
+                where,
+                skip,
+                take: limit,
+                orderBy: { createdAt: 'desc' },
+                include: {
+                    assignedTo: {
+                        select: { id: true, name: true, email: true, role: true },
+                    },
+                    project: {
+                        select: { id: true, name: true, createdById: true },
+                    },
+                    _count: {
+                        select: { activityLogs: true },
+                    },
+                },
+            }),
+        ]);
+        res.status(200).json({
+            tasks,
+            pagination: {
+                total,
+                page,
+                limit,
+                totalPages: Math.ceil(total / limit) || 1,
+            },
+        });
+    }
+    catch (error) {
+        next(error);
+    }
+};
+exports.listTasks = listTasks;
 const getTaskById = async (req, res, next) => {
     try {
         const { id } = req.params;
@@ -359,6 +468,7 @@ const updateTaskStatus = async (req, res, next) => {
                 },
             });
             let pmNotification = null;
+            let devNotification = null;
             // If new status is IN_REVIEW, notify the project's PM
             if (newStatus === client_1.TaskStatus.IN_REVIEW && oldStatus !== client_1.TaskStatus.IN_REVIEW) {
                 pmNotification = await tx.notification.create({
@@ -370,7 +480,25 @@ const updateTaskStatus = async (req, res, next) => {
                     },
                 });
             }
-            return { task: updatedTask, activityLog, pmNotification };
+            // If status changed by PM/Admin and task is assigned to a developer, notify the developer
+            if (task.assignedToId && task.assignedToId !== userId) {
+                const statusLabel = newStatus === 'TODO'
+                    ? 'To Do'
+                    : newStatus === 'IN_PROGRESS'
+                        ? 'In Progress'
+                        : newStatus === 'IN_REVIEW'
+                            ? 'In Review'
+                            : 'Done';
+                devNotification = await tx.notification.create({
+                    data: {
+                        userId: task.assignedToId,
+                        type: 'TASK_ASSIGNED',
+                        message: `Task "${task.title}" status updated to ${statusLabel}`,
+                        relatedTaskId: task.id,
+                    },
+                });
+            }
+            return { task: updatedTask, activityLog, pmNotification, devNotification };
         });
         // Real-time WebSocket emission after successful transaction commit
         (0, index_js_1.broadcastTaskActivity)({
@@ -389,6 +517,9 @@ const updateTaskStatus = async (req, res, next) => {
         }, result.task.assignedToId);
         if (result.pmNotification) {
             (0, index_js_1.broadcastNotification)(result.pmNotification.userId, result.pmNotification);
+        }
+        if (result.devNotification && result.task.assignedToId) {
+            (0, index_js_1.broadcastNotification)(result.task.assignedToId, result.devNotification);
         }
         res.status(200).json({ task: result.task, activityLog: result.activityLog });
     }

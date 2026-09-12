@@ -283,6 +283,30 @@ export const broadcastTaskActivity = (
 };
 
 /**
+ * Broadcasts task overdue event to relevant role-scoped rooms.
+ * - activity:global (Admin sees all)
+ * - activity:project:<projectId> (Anyone viewing the project board)
+ * - activity:dev:<assignedToId> (Assignee developer if set)
+ */
+export const broadcastTaskOverdue = (
+  payload: import('../types/socket.js').TaskOverduePayload,
+  assignedToId?: string | null
+): void => {
+  if (!io) return;
+
+  // 1. Global room for Admins
+  io.to('activity:global').emit('task:overdue', payload);
+
+  // 2. Project room for board viewers
+  io.to(`activity:project:${payload.projectId}`).emit('task:overdue', payload);
+
+  // 3. Developer room for the assigned developer
+  if (assignedToId) {
+    io.to(`activity:dev:${assignedToId}`).emit('task:overdue', payload);
+  }
+};
+
+/**
  * Emits a notification and updated unread count to a specific user.
  */
 export const broadcastNotification = async (

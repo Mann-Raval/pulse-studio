@@ -96,6 +96,39 @@ class ApiClient {
     return this.request<{ user: any }>('/auth/me');
   }
 
+  public getUsers(role?: string) {
+    const query = new URLSearchParams();
+    if (role) query.set('role', role);
+    const qs = query.toString() ? `?${query.toString()}` : '';
+    return this.request<{ users: any[] }>(`/users${qs}`);
+  }
+
+  public createUser(data: { name: string; email: string; password: string; role: string }) {
+    return this.request<{ user: any }>('/users', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  public updateUser(id: string, data: { name?: string; email?: string; role?: string }) {
+    return this.request<{ user: any }>(`/users/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+  }
+
+  // Clients endpoints
+  public getClients() {
+    return this.request<{ clients: any[] }>('/clients');
+  }
+
+  public createClient(data: { name: string }) {
+    return this.request<{ client: any }>('/clients', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
   // Projects endpoints
   public getProjects(params?: { status?: string; page?: number; limit?: number }) {
     const query = new URLSearchParams();
@@ -131,6 +164,31 @@ class ApiClient {
   }
 
   // Tasks endpoints
+  public getTasks(filters?: {
+    projectId?: string;
+    status?: string;
+    priority?: string;
+    isOverdue?: boolean | string;
+    dueBefore?: string;
+    dueAfter?: string;
+    assignedToId?: string;
+    page?: number;
+    limit?: number;
+  }) {
+    const query = new URLSearchParams();
+    if (filters?.projectId) query.set('projectId', filters.projectId);
+    if (filters?.status) query.set('status', filters.status);
+    if (filters?.priority) query.set('priority', filters.priority);
+    if (filters?.isOverdue !== undefined) query.set('isOverdue', String(filters.isOverdue));
+    if (filters?.dueBefore) query.set('dueBefore', filters.dueBefore);
+    if (filters?.dueAfter) query.set('dueAfter', filters.dueAfter);
+    if (filters?.assignedToId) query.set('assignedToId', filters.assignedToId);
+    if (filters?.page) query.set('page', String(filters.page));
+    if (filters?.limit) query.set('limit', String(filters.limit));
+    const qs = query.toString() ? `?${query.toString()}` : '';
+    return this.request<{ tasks: any[]; pagination: any }>(`/tasks${qs}`);
+  }
+
   public getProjectTasks(projectId: string, filters?: {
     status?: string;
     priority?: string;
@@ -189,6 +247,33 @@ class ApiClient {
       method: 'PATCH',
       body: JSON.stringify(data),
     });
+  }
+
+  public getNotifications(page = 1, limit = 20) {
+    return this.request<{
+      notifications: any[];
+      unreadCount: number;
+      pagination: { total: number; page: number; limit: number; totalPages: number };
+    }>(`/notifications?page=${page}&limit=${limit}`);
+  }
+
+  public getUnreadNotificationsCount() {
+    return this.request<{ unreadCount: number }>('/notifications/unread-count');
+  }
+
+  public markNotificationAsRead(id: string | number) {
+    return this.request<{ notification: any; unreadCount: number }>(`/notifications/${id}/read`, {
+      method: 'PATCH',
+    });
+  }
+
+  public markAllNotificationsAsRead() {
+    return this.request<{ message: string; count: number; unreadCount: number }>(
+      '/notifications/read-all',
+      {
+        method: 'PATCH',
+      }
+    );
   }
 }
 

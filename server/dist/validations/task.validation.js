@@ -62,6 +62,7 @@ exports.taskIdParamSchema = zod_1.z.object({
     id: zod_1.z.string().trim().min(1, 'Task ID is required'),
 });
 exports.taskQuerySchema = zod_1.z.object({
+    projectId: zod_1.z.string().trim().optional(),
     status: zod_1.z
         .nativeEnum(client_1.TaskStatus, {
         errorMap: () => ({ message: 'Invalid status filter' }),
@@ -72,6 +73,7 @@ exports.taskQuerySchema = zod_1.z.object({
         errorMap: () => ({ message: 'Invalid priority filter' }),
     })
         .optional(),
+    isOverdue: zod_1.z.string().optional(),
     dueBefore: zod_1.z.string().optional(),
     dueAfter: zod_1.z.string().optional(),
     assignedToId: zod_1.z.string().trim().optional(),

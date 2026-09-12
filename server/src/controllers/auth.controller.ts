@@ -268,3 +268,33 @@ export const getMe = async (
     next(error);
   }
 };
+
+export const getUsers = async (
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const { role } = req.query;
+    const where: any = {};
+    if (role) {
+      where.role = role as any;
+    }
+
+    const users = await prisma.user.findMany({
+      where,
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true,
+        createdAt: true,
+      },
+      orderBy: { name: 'asc' },
+    });
+
+    res.status(200).json({ users });
+  } catch (error) {
+    next(error);
+  }
+};

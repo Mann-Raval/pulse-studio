@@ -9,14 +9,25 @@ import {
   getTaskById,
   updateTaskStatus,
   updateTask,
+  listTasks,
 } from '../controllers/task.controller.js';
 import {
   taskIdParamSchema,
   updateTaskStatusSchema,
   updateTaskSchema,
+  taskQuerySchema,
 } from '../validations/task.validation.js';
+import { validateQuery } from '../middlewares/validate.middleware.js';
 
 const router = Router();
+
+// GET all tasks (Role-scoped: DEVELOPER gets own, PM gets created projects' tasks, ADMIN gets all)
+router.get(
+  '/',
+  authenticate,
+  validateQuery(taskQuerySchema),
+  listTasks
+);
 
 // GET single task with activity logs (Role-scoped)
 router.get(

@@ -6,7 +6,10 @@ const auth_middleware_js_1 = require("../middlewares/auth.middleware.js");
 const validate_middleware_js_1 = require("../middlewares/validate.middleware.js");
 const task_controller_js_1 = require("../controllers/task.controller.js");
 const task_validation_js_1 = require("../validations/task.validation.js");
+const validate_middleware_js_2 = require("../middlewares/validate.middleware.js");
 const router = (0, express_1.Router)();
+// GET all tasks (Role-scoped: DEVELOPER gets own, PM gets created projects' tasks, ADMIN gets all)
+router.get('/', auth_middleware_js_1.authenticate, (0, validate_middleware_js_2.validateQuery)(task_validation_js_1.taskQuerySchema), task_controller_js_1.listTasks);
 // GET single task with activity logs (Role-scoped)
 router.get('/:id', auth_middleware_js_1.authenticate, (0, validate_middleware_js_1.validateParams)(task_validation_js_1.taskIdParamSchema), task_controller_js_1.getTaskById);
 // Status transition (Permitted for ADMIN, PM, and DEVELOPER for assigned tasks)

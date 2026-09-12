@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getMe = exports.register = exports.logout = exports.refresh = exports.login = void 0;
+exports.getUsers = exports.getMe = exports.register = exports.logout = exports.refresh = exports.login = void 0;
 const bcryptjs_1 = __importDefault(require("bcryptjs"));
 const prisma_js_1 = require("../lib/prisma.js");
 const index_js_1 = require("../config/index.js");
@@ -237,3 +237,28 @@ const getMe = async (req, res, next) => {
     }
 };
 exports.getMe = getMe;
+const getUsers = async (req, res, next) => {
+    try {
+        const { role } = req.query;
+        const where = {};
+        if (role) {
+            where.role = role;
+        }
+        const users = await prisma_js_1.prisma.user.findMany({
+            where,
+            select: {
+                id: true,
+                name: true,
+                email: true,
+                role: true,
+                createdAt: true,
+            },
+            orderBy: { name: 'asc' },
+        });
+        res.status(200).json({ users });
+    }
+    catch (error) {
+        next(error);
+    }
+};
+exports.getUsers = getUsers;

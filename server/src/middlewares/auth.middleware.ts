@@ -47,7 +47,10 @@ export const requireRole = (...allowedRoles: Role[]) => {
       return;
     }
 
-    if (!allowedRoles.includes(req.user.role)) {
+    // ADMIN has hierarchical superuser bypass matching frontend hasRole
+    const isAllowed = allowedRoles.includes(req.user.role) || req.user.role === Role.ADMIN;
+
+    if (!isAllowed) {
       res.status(403).json({
         error: {
           code: 'FORBIDDEN',

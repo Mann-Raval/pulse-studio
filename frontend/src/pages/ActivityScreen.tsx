@@ -3,7 +3,7 @@ import { AppLayout } from '../components/layout/AppLayout';
 import { mockActivityEvents } from '../data/mockData';
 import type { ActivityEvent, ActivityType } from '../types';
 import { useSocket } from '../hooks/useSocket';
-
+import { useSearch } from '../context/SearchContext';
 
 export interface ActivityScreenProps {
   initialEvents?: ActivityEvent[];
@@ -17,6 +17,7 @@ export const ActivityScreen: React.FC<ActivityScreenProps> = ({
   onExportCsv,
 }) => {
   const { activities, isConnected } = useSocket();
+  const { searchQuery } = useSearch();
   const [filterType, setFilterType] = useState<ActivityType>('all');
 
   // Convert real socket activities to display format if available
@@ -33,9 +34,21 @@ export const ActivityScreen: React.FC<ActivityScreenProps> = ({
 
   const combinedEvents = [...socketEvents, ...initialEvents];
 
-  const filteredEvents = combinedEvents.filter(
-    (e) => filterType === 'all' || e.type === filterType
-  );
+  const query = searchQuery.trim().toLowerCase();
+
+  const filteredEvents = combinedEvents.filter((e) => {
+    if (filterType !== 'all' && e.type !== filterType) return false;
+
+    if (query) {
+      const matchUser = e.user.toLowerCase().includes(query);
+      const matchAction = e.action.toLowerCase().includes(query);
+      const matchProject = e.project.toLowerCase().includes(query);
+      const matchNote = e.note?.toLowerCase().includes(query) || false;
+      if (!matchUser && !matchAction && !matchProject && !matchNote) return false;
+    }
+
+    return true;
+  });
 
   const handleExport = () => {
     if (onExportCsv) {
@@ -75,7 +88,7 @@ export const ActivityScreen: React.FC<ActivityScreenProps> = ({
             </span>
             <button
               onClick={handleExport}
-              className="px-3 py-1 rounded-sm bg-surface-container hover:bg-surface-container-high border border-outline-variant text-xs transition-colors"
+              className="px-3 py-1 rounded-sm bg-surface-container hover:bg-surface-container-high border border-outline-variant text-xs text-on-surface transition-colors cursor-pointer"
             >
               Export CSV
             </button>
@@ -84,8 +97,8 @@ export const ActivityScreen: React.FC<ActivityScreenProps> = ({
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
           {/* Filter Sidebar */}
-          <aside className="lg:col-span-3 bg-surface-container-low border border-outline-variant/30 rounded-sm p-4 space-y-4 text-xs">
-            <div className="font-semibold text-xs border-b border-outline-variant/20 pb-2">
+          <aside className="lg:col-span-3 bg-surface-container-low border border-outline-variant/30 rounded-sm p-4 space-y-4 text-xs shadow-xs">
+            <div className="font-semibold text-xs border-b border-outline-variant/20 pb-2 text-on-surface">
               Filter Events
             </div>
             <div>
@@ -97,10 +110,10 @@ export const ActivityScreen: React.FC<ActivityScreenProps> = ({
                   <button
                     key={k}
                     onClick={() => setFilterType(k)}
-                    className={`w-full text-left px-2 py-1 rounded-sm capitalize text-xs transition-colors ${
+                    className={`w-full text-left px-2.5 py-1.5 rounded-sm capitalize text-xs transition-colors cursor-pointer ${
                       filterType === k
-                        ? 'bg-primary/20 text-primary font-semibold'
-                        : 'text-outline hover:text-on-surface'
+                        ? 'bg-primary/20 text-primary font-semibold shadow-xs'
+                        : 'text-outline hover:text-on-surface hover:bg-surface-container'
                     }`}
                   >
                     {k}
@@ -112,40 +125,48 @@ export const ActivityScreen: React.FC<ActivityScreenProps> = ({
 
           {/* Feed List */}
           <section className="lg:col-span-9 space-y-3">
-            <div className="divide-y divide-outline-variant/20 border border-outline-variant/30 rounded-sm bg-surface-container-low overflow-hidden">
-              {filteredEvents.map((ev) => (
-                <div
-                  key={ev.id}
-                  className="p-4 hover:bg-surface-container transition-colors flex items-start justify-between gap-4 text-xs"
-                >
-                  <div className="space-y-1">
-                    <div className="text-on-surface">
-                      <strong className="text-on-surface mr-1">{ev.user}</strong>
-                      <span className="text-on-surface-variant">{ev.action}</span>
-                    </div>
-                    <div className="flex items-center gap-2 text-[11px] font-mono">
-                      <span className="text-outline">[{ev.project}]</span>
-                      {ev.to && (
-                        <span
-                          className={`px-1.5 py-0.2 rounded-sm ${
-                            ev.type === 'blocker'
-                              ? 'bg-error/20 text-error'
-                              : 'bg-secondary/10 text-secondary'
-                          }`}
-                        >
-                          {ev.to}
-                        </span>
-                      )}
-                      {ev.note && (
-                        <span className="text-outline italic">"{ev.note}"</span>
-                      )}
-                    </div>
-                  </div>
-                  <span className="font-mono text-[11px] text-outline shrink-0">
-                    {ev.time}
-                  </span>
+            <div className="divide-y divide-outline-variant/20 border border-outline-variant/30 rounded-sm bg-surface-container-low overflow-hidden shadow-xs">
+              {filteredEvents.length === 0 ? (
+                <div className="p-8 text-center text-outline text-xs">
+                  {searchQuery
+                    ? `No activity events matching "${searchQuery}".`
+                    : 'No activity logs found.'}
                 </div>
-              ))}
+              ) : (
+                filteredEvents.map((ev) => (
+                  <div
+                    key={ev.id}
+                    className="p-4 hover:bg-surface-container transition-colors flex items-start justify-between gap-4 text-xs"
+                  >
+                    <div className="space-y-1">
+                      <div className="text-on-surface">
+                        <strong className="text-on-surface mr-1">{ev.user}</strong>
+                        <span className="text-on-surface-variant">{ev.action}</span>
+                      </div>
+                      <div className="flex items-center gap-2 text-[11px] font-mono">
+                        <span className="text-outline">[{ev.project}]</span>
+                        {ev.to && (
+                          <span
+                            className={`px-1.5 py-0.2 rounded-sm font-medium ${
+                              ev.type === 'blocker'
+                                ? 'bg-error/20 text-error'
+                                : 'bg-secondary/10 text-secondary'
+                            }`}
+                          >
+                            {ev.to}
+                          </span>
+                        )}
+                        {ev.note && (
+                          <span className="text-outline italic">"{ev.note}"</span>
+                        )}
+                      </div>
+                    </div>
+                    <span className="font-mono text-[11px] text-outline shrink-0">
+                      {ev.time}
+                    </span>
+                  </div>
+                ))
+              )}
             </div>
           </section>
         </div>

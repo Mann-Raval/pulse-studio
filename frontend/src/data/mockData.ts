@@ -1,13 +1,20 @@
 import type { Task, Project, ActivityEvent, NotificationItem, User } from '../types';
 
-// ==========================================
-// CURRENT AUTH USER (MOCK CONTEXT)
-// ==========================================
-// TODO: Replace with GET /api/auth/me or JWT user payload decoded from cookie/local storage
+/**
+ * ============================================================================
+ * LEGACY / TEST FIXTURE DATA
+ * ============================================================================
+ * WARNING: Do not use these mock data objects as silent catch fallbacks in production
+ * components. Production components should fetch live data via the API client and
+ * display visible loading/error states rather than falling back to stale mock data.
+ * ============================================================================
+ */
+
+// User fixture (for storybook / test renderers)
 export const mockCurrentUser: User = {
   id: 'usr-01',
   name: 'Alex Rivera',
-  email: 'marcus.lead@pulsestudio.agency',
+  email: 'alex.rivera@pulsestudio.agency',
   role: 'Developer',
   avatarUrl: 'https://lh3.googleusercontent.com/aida-public/AB6AXuBvx4PgiQ3jZ_4n6eeB76G0hZCI4bG_n_5SQfqowo81L0S11YsWIupEZqyt3ExsiBfDLE-6pkvnMD8axEi32wHLsbuseWN5dNJVVazA8qAXOOr5m5e0Wo-mtDp0I8pKCm61rDJwAKMrwqnh5f2lVEmeE2jao52tJnaRCpzLUZuw1yYZBuUBS2h3D79bHIqgEQcdeigbbQSjZ2s1BUdCyWu5cd5q-Ow9N1p28z4SLqBdG4gWBLuDL8OKJg',
   pod: 'Pod Alpha',
@@ -15,11 +22,7 @@ export const mockCurrentUser: User = {
   status: 'online',
 };
 
-// ==========================================
-// NOTIFICATIONS
-// ==========================================
-// TODO: Replace with GET /api/notifications
-// TODO: Subscribe to Socket.io event: 'notification:new'
+// Notification fixture
 export const mockNotifications: NotificationItem[] = [
   { id: 1, title: "You were assigned Task #14: Redesign homepage", team: "Nova AI Inc. // Design Ops", time: "just now", unread: true, type: "task" },
   { id: 2, title: "Task #88: Vector Embedding Reduction moved to In Review", team: "Hyperscale Labs", time: "4m ago", unread: true, type: "review" },
@@ -27,11 +30,7 @@ export const mockNotifications: NotificationItem[] = [
   { id: 4, title: "Sprint 4 staging build v2.4.1 deployed successfully", team: "Pulse Infrastructure", time: "1h ago", unread: false, type: "deploy" }
 ];
 
-// ==========================================
-// DEVELOPER ASSIGNED TASKS
-// ==========================================
-// TODO: Replace with GET /api/tasks?assignee=me
-// TODO: Subscribe to Socket.io event: 'task:assigned' and 'task:updated'
+// Developer assigned tasks fixture (DEPRECATED for production screens - use api.getTasks())
 export const mockDevTasks: Task[] = [
   { id: "PLS-882", title: "Biometric SSO Callback Handshake - Fix Token Deserialization", project: "Nova AI Inc.", branch: "feat/auth-sso", due: "Overdue (Nov 16)", status: "In Progress", priority: "critical", isOverdue: true, description: "Resolve the timing race condition during OAuth2 state exchange on mobile Safari biometric triggers. Token refresh fails intermittently if cryptographic nonce is resolved prematurely." },
   { id: "PLS-904", title: "Mobile Fintech Redesign: Hotfix Memory Leak on Canvas View", project: "FinPulse Global", branch: "bugfix/canvas-mem", due: "Today, 5:00 PM", status: "In Progress", priority: "critical", isOverdue: false },
@@ -42,11 +41,7 @@ export const mockDevTasks: Task[] = [
   { id: "PLS-805", title: "Update Docker Compose development container dependencies", project: "Infrastructure", branch: "dev/docker-up", due: "Nov 28, 2024", status: "To Do", priority: "low", isOverdue: false }
 ];
 
-// ==========================================
-// KANBAN BOARD TASKS & COMMENTS
-// ==========================================
-// TODO: Replace with GET /api/projects/:projectId/board
-// TODO: Subscribe to Socket.io event: 'board:task_moved' and 'board:task_updated'
+// Board tasks fixture (DEPRECATED for production screens - use api.getProjectTasks())
 export const mockBoardTasks: Record<string, Task[]> = {
   'To Do': [
     { id: "PLS-610", title: "Multi-modal Token Pipeline Cache", project: "Nova AI Token Engine", priority: "medium", status: "To Do" },
@@ -75,18 +70,12 @@ export const mockBoardTasks: Record<string, Task[]> = {
   ]
 };
 
-// TODO: Replace with GET /api/tasks/:taskId/comments
-// TODO: Subscribe to Socket.io event: 'task:comment_added'
 export const mockTaskComments = [
   { id: 1, user: "Alex Rivera", time: "12m ago", text: "Pushed commit 4f9b2a to feat/auth-sso" },
   { id: 2, user: "Marcus Lead", time: "1h ago", text: "Changed status from To Do → In Progress" },
   { id: 3, user: "Elena Rostova", time: "3h ago", text: "Added tag: Waiting on API gateway specs" }
 ];
 
-// ==========================================
-// PM MANAGED PROJECTS
-// ==========================================
-// TODO: Replace with GET /api/pm/projects
 export const mockPMProjects: Project[] = [
   { id: "prj-1", name: "Nova AI Token Engine", client: "Nova AI Inc.", status: "On Track", statusColor: "text-secondary", pct: 78, tasksCount: "32/41 done", sprint: "Sprint 4 • High Load", target: "Nov 28" },
   { id: "prj-2", name: "FinPulse Mobile Redesign", client: "FinPulse Global", status: "At Risk", statusColor: "text-tertiary", pct: 54, tasksCount: "19/35 done", sprint: "Design QA lag", target: "Dec 04" },
@@ -94,10 +83,6 @@ export const mockPMProjects: Project[] = [
   { id: "prj-4", name: "Kinetix 3D Prototyping", client: "Kinetix Studio", status: "On Track", statusColor: "text-secondary", pct: 91, tasksCount: "31/34 done", sprint: "Final renders in test", target: "Nov 22" }
 ];
 
-// ==========================================
-// PM TEAM TASKS MATRIX
-// ==========================================
-// TODO: Replace with GET /api/pm/team-tasks
 export const mockPMTeamTasks: Task[] = [
   { id: "PLS-304", title: "Biometric SSO Callback Handshake", project: "Nova AI Token Engine", assignee: "Elena Rostova", priority: "critical", status: "In Progress", due: "Nov 18" },
   { id: "PLS-298", title: "Design token export pipeline", project: "FinPulse Mobile Redesign", assignee: "Marcus Chen", priority: "medium", status: "In Progress", due: "Nov 19" },
@@ -107,11 +92,6 @@ export const mockPMTeamTasks: Task[] = [
   { id: "PLS-330", title: "PostgreSQL read replica synchronization lag", project: "Hyperscale Migration", assignee: "Tariq Al-Mansoor", priority: "critical", status: "Blocked", due: "Nov 16" }
 ];
 
-// ==========================================
-// ACTIVITY AUDIT EVENTS
-// ==========================================
-// TODO: Replace with GET /api/activity
-// TODO: Subscribe to Socket.io event: 'activity:new'
 export const mockActivityEvents: ActivityEvent[] = [
   { id: 1, user: "Elena Rostova", action: "updated status for PLS-882: Biometric SSO Callback", from: "In Progress", to: "In Review", project: "Nova AI Token Engine", time: "2m ago", type: "status" },
   { id: 2, user: "Alex Rivera", action: "reassigned Task #14: Redesign homepage to Sarah Lin", from: "To Do", to: "In Progress", project: "FinPulse Mobile", time: "14m ago", type: "assign" },
@@ -121,10 +101,6 @@ export const mockActivityEvents: ActivityEvent[] = [
   { id: 6, user: "Devon Ward", action: "transitioned PLS-721: Client Deliverables Checklist API", from: "To Do", to: "In Progress", project: "Pulse Studio", time: "Yesterday", type: "status" }
 ];
 
-// ==========================================
-// ADMIN DASHBOARD OVERVIEW DATA
-// ==========================================
-// TODO: Replace with GET /api/admin/metrics
 export const mockAdminMetrics = {
   activeProjects: 18,
   projectsChangeText: "+3 this month • 4 on hold",

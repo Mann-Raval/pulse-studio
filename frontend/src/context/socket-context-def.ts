@@ -1,5 +1,6 @@
 import { createContext } from 'react';
 import type { Socket } from 'socket.io-client';
+import type { NotificationItem } from '../types';
 
 export interface ActivityPayload {
   id: string;
@@ -16,6 +17,15 @@ export interface ActivityPayload {
   changedAt: string | Date;
 }
 
+export interface TaskOverduePayload {
+  taskId: string;
+  projectId: string;
+  taskTitle: string;
+  assignedToId: string | null;
+  dueDate: string | Date | null;
+  isOverdue: boolean;
+}
+
 export interface PresenceUser {
   id: string;
   name: string;
@@ -29,11 +39,16 @@ export interface SocketContextType {
   onlineUsers: PresenceUser[];
   activities: ActivityPayload[];
   latestActivity: ActivityPayload | null;
+  latestTaskOverdue: TaskOverduePayload | null;
+  notifications: NotificationItem[];
   unreadNotificationsCount: number;
   latestNotification: any;
   joinProject: (projectId: string) => void;
   leaveProject: (projectId: string) => void;
   syncActivities: (lastTimestamp: string | null) => Promise<ActivityPayload[]>;
+  fetchNotifications: () => Promise<void>;
+  markNotificationAsRead: (id: string | number) => Promise<void>;
+  markAllNotificationsAsRead: () => Promise<void>;
 }
 
 export const SocketContext = createContext<SocketContextType | undefined>(undefined);
