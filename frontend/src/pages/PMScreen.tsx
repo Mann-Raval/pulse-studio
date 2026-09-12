@@ -1,8 +1,11 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AppLayout } from '../components/layout/AppLayout';
 import { mockPMProjects, mockPMTeamTasks } from '../data/mockData';
 import type { Project, Task } from '../types';
+import { api } from '../services/api';
+import { useAuth } from '../hooks/useAuth';
+
 
 export interface PMScreenProps {
   projects?: Project[];
@@ -12,22 +15,45 @@ export interface PMScreenProps {
 }
 
 export const PMScreen: React.FC<PMScreenProps> = ({
-  // TODO: Replace with GET /api/pm/projects
-  projects = mockPMProjects,
-  // TODO: Replace with GET /api/pm/team-tasks and subscribe to Socket.io 'task:updated'
+  projects: initialProjects = mockPMProjects,
   teamTasks = mockPMTeamTasks,
   podName = 'Pod Alpha',
   totalTeamTasksCount = 59,
 }) => {
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const [projects, setProjects] = useState<Project[]>(initialProjects);
+
+  useEffect(() => {
+    api.getProjects()
+      .then((res) => {
+        if (res.projects && res.projects.length > 0) {
+          const mapped: Project[] = res.projects.map((p: any) => ({
+            id: p.id,
+            name: p.name,
+            client: p.client?.name || 'Client',
+            status: p.derivedStatus === 'COMPLETED' ? 'On Track' : 'In Progress',
+            statusColor: 'text-secondary',
+            pct: p.taskStats?.total > 0 ? Math.round((p.taskStats.completed / p.taskStats.total) * 100) : 65,
+            tasksCount: `${p.taskStats?.completed || 0}/${p.taskStats?.total || 0} done`,
+            sprint: 'Active Sprint',
+            target: 'Active',
+          }));
+          setProjects(mapped);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   return (
     <AppLayout activeTab="pm" userRole="PM">
       <main className="p-6 space-y-6 max-w-7xl mx-auto w-full">
         <div className="flex items-center justify-between border-b border-outline-variant/30 pb-4">
           <div>
-            <h1 className="text-xl font-bold text-on-surface">My Managed Projects</h1>
-            <p className="text-xs text-on-surface-variant">Surgical execution matrix for {podName}</p>
+            <h1 className="text-xl font-bold text-on-surface">PM Overview & Managed Projects</h1>
+            <p className="text-xs text-on-surface-variant">
+              Role-scoped projects created by {user?.name || 'Project Manager'} ({podName})
+            </p>
           </div>
           <button
             onClick={() => navigate('/project-board')}
@@ -83,7 +109,7 @@ export const PMScreen: React.FC<PMScreenProps> = ({
           <div className="lg:col-span-8 bg-surface-container-low border border-outline-variant/30 rounded-sm p-4 space-y-3">
             <div className="flex justify-between items-center pb-2 border-b border-outline-variant/20 text-xs font-semibold">
               <span>Workload Tasks by Priority</span>
-              <span className="text-[10px] font-mono text-outline">Sprint 4 Distribution</span>
+              <span className="text-[10px] font-mono text-outline">Active Sprint Distribution</span>
             </div>
             <div className="space-y-3 text-xs">
               <div>

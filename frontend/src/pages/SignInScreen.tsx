@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../hooks/useAuth';
+
 
 export interface SignInScreenProps {
   onSignIn?: (credentials: { email: string; pass: string }) => void;
@@ -8,29 +10,45 @@ export interface SignInScreenProps {
 }
 
 export const SignInScreen: React.FC<SignInScreenProps> = ({
-  onSignIn,
   systemStatusText = '99.98% Operational',
   clusterRegion = 'US-EAST-1',
 }) => {
   const navigate = useNavigate();
-  const [showPassword, setShowPassword] = useState(false);
-  const [email, setEmail] = useState('marcus.lead@pulsestudio.agency');
-  const [password, setPassword] = useState('masterpassword');
+  const { login } = useAuth();
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const [showPassword, setShowPassword] = useState(false);
+  const [email, setEmail] = useState('admin@pulsestudio.io');
+  const [password, setPassword] = useState('password123');
+  const [isLoading, setIsLoading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    // TODO: POST /api/auth/login with { email, password }
-    if (onSignIn) {
-      onSignIn({ email, pass: password });
-    } else {
-      navigate('/dashboard');
+    setErrorMessage(null);
+    setIsLoading(true);
+
+    try {
+      const user = await login({ email, password });
+      const roleLower = String(user.role).toLowerCase();
+
+      if (roleLower === 'admin') {
+        navigate('/dashboard');
+      } else if (roleLower === 'pm') {
+        navigate('/pm');
+      } else {
+        navigate('/developer');
+      }
+    } catch (err: any) {
+      setErrorMessage(err.message || 'Invalid email or password. Please try again.');
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  const handleSSOLogin = (provider: 'google' | 'github') => {
-    // TODO: Initiate OAuth SSO flow: window.location.href = `/api/auth/${provider}`
-    console.log(`Initiating SSO login with provider: ${provider}`);
-    navigate('/dashboard');
+  const handleQuickFill = (demoEmail: string) => {
+    setEmail(demoEmail);
+    setPassword('password123');
+    setErrorMessage(null);
   };
 
   return (
@@ -59,36 +77,61 @@ export const SignInScreen: React.FC<SignInScreenProps> = ({
         </header>
 
         <main className="w-full max-w-md mx-auto my-auto py-4">
-          <div className="mb-7">
+          <div className="mb-6">
             <h1 className="text-2xl font-bold text-on-surface tracking-tight">Welcome back</h1>
             <p className="text-xs text-on-surface-variant mt-1.5">
-              Enter your agency credentials to access real-time ops.
+              Sign in with your Pulse Studio credentials to access live ops.
             </p>
           </div>
 
-          <div className="grid grid-cols-2 gap-3 mb-5">
-            <button
-              type="button"
-              onClick={() => handleSSOLogin('google')}
-              className="flex items-center justify-center gap-2 px-3 py-2 rounded-sm bg-surface-container-low hover:bg-surface-container border border-outline-variant/50 text-on-surface text-xs font-medium transition-colors"
-            >
-              <span className="text-xs font-semibold">Google SSO</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => handleSSOLogin('github')}
-              className="flex items-center justify-center gap-2 px-3 py-2 rounded-sm bg-surface-container-low hover:bg-surface-container border border-outline-variant/50 text-on-surface text-xs font-medium transition-colors"
-            >
-              <span className="text-xs font-semibold">GitHub Ent.</span>
-            </button>
+          {/* Quick Demo Login Selectors */}
+          <div className="mb-5 p-3 rounded-sm bg-surface-container-low border border-outline-variant/50">
+            <span className="block text-[10px] font-mono text-outline uppercase tracking-wider mb-2">
+              Quick Select Demo Persona:
+            </span>
+            <div className="grid grid-cols-3 gap-2">
+              <button
+                type="button"
+                onClick={() => handleQuickFill('admin@pulsestudio.io')}
+                className={`px-2 py-1.5 rounded text-center text-xs font-mono transition-colors border ${
+                  email === 'admin@pulsestudio.io'
+                    ? 'bg-primary text-white border-primary'
+                    : 'bg-surface-container hover:bg-surface-container-high text-on-surface border-outline-variant/40'
+                }`}
+              >
+                👑 Admin
+              </button>
+              <button
+                type="button"
+                onClick={() => handleQuickFill('pm@pulsestudio.io')}
+                className={`px-2 py-1.5 rounded text-center text-xs font-mono transition-colors border ${
+                  email === 'pm@pulsestudio.io'
+                    ? 'bg-primary text-white border-primary'
+                    : 'bg-surface-container hover:bg-surface-container-high text-on-surface border-outline-variant/40'
+                }`}
+              >
+                📁 PM
+              </button>
+              <button
+                type="button"
+                onClick={() => handleQuickFill('dev@pulsestudio.io')}
+                className={`px-2 py-1.5 rounded text-center text-xs font-mono transition-colors border ${
+                  email === 'dev@pulsestudio.io'
+                    ? 'bg-primary text-white border-primary'
+                    : 'bg-surface-container hover:bg-surface-container-high text-on-surface border-outline-variant/40'
+                }`}
+              >
+                💻 Dev
+              </button>
+            </div>
           </div>
 
-          <div className="relative flex items-center justify-center my-5">
-            <div className="border-t border-outline-variant/40 w-full"></div>
-            <span className="bg-surface-container-lowest px-3 text-[10px] font-mono text-outline uppercase tracking-wider relative z-10">
-              or sign in with email
-            </span>
-          </div>
+          {errorMessage && (
+            <div className="mb-4 p-3 rounded-sm bg-error/10 border border-error/30 text-error text-xs flex items-center gap-2">
+              <span className="material-symbols-outlined text-sm">error</span>
+              <span>{errorMessage}</span>
+            </div>
+          )}
 
           <form className="space-y-4" onSubmit={handleSubmit}>
             <div>
@@ -109,7 +152,7 @@ export const SignInScreen: React.FC<SignInScreenProps> = ({
               <div className="flex items-center justify-between mb-1.5">
                 <label className="block text-[11px] font-mono text-on-surface">Password</label>
                 <span className="text-[11px] font-mono text-primary hover:underline cursor-pointer">
-                  Forgot password?
+                  Default: password123
                 </span>
               </div>
               <div className="relative flex items-center">
@@ -140,30 +183,29 @@ export const SignInScreen: React.FC<SignInScreenProps> = ({
                   type="checkbox"
                   className="w-3.5 h-3.5 rounded-sm border-outline-variant bg-surface-container text-primary"
                 />
-                <span>Remember device for 30 days</span>
+                <span>Remember session</span>
               </label>
-              <span className="text-[11px] font-mono text-outline">SSO ready</span>
+              <span className="text-[11px] font-mono text-outline">JWT Encrypted</span>
             </div>
 
             <button
               type="submit"
-              className="w-full h-9 mt-2 flex items-center justify-center gap-2 rounded-sm bg-primary hover:bg-inverse-primary text-white text-xs font-semibold transition-all shadow-md active:scale-[0.99]"
+              disabled={isLoading}
+              className="w-full h-9 mt-2 flex items-center justify-center gap-2 rounded-sm bg-primary hover:bg-inverse-primary disabled:opacity-50 text-white text-xs font-semibold transition-all shadow-md active:scale-[0.99]"
             >
-              <span>Sign in to Workspace</span>
-              <span className="material-symbols-outlined text-sm">arrow_forward</span>
+              {isLoading ? (
+                <>
+                  <span className="material-symbols-outlined animate-spin text-sm">progress_activity</span>
+                  <span>Authenticating...</span>
+                </>
+              ) : (
+                <>
+                  <span>Sign in to Workspace</span>
+                  <span className="material-symbols-outlined text-sm">arrow_forward</span>
+                </>
+              )}
             </button>
           </form>
-
-          <div className="mt-6 p-3 rounded-sm bg-surface-container-low/60 border border-outline-variant/40 flex items-start gap-2.5 text-xs text-on-surface-variant">
-            <span className="material-symbols-outlined text-primary text-base">info</span>
-            <p>
-              Admins, PMs, and Developers sign in here. Direct navigation shortcuts:
-              <br />
-              <Link to="/dashboard" className="text-primary hover:underline mr-2">Admin Dashboard</Link> • 
-              <Link to="/pm" className="text-primary hover:underline mx-2">PM Overview</Link> • 
-              <Link to="/developer" className="text-primary hover:underline ml-2">Developer Workspace</Link>
-            </p>
-          </div>
         </main>
 
         <footer className="flex flex-col sm:flex-row items-center justify-between pt-4 border-t border-outline-variant/30 text-outline text-[11px] font-mono">
@@ -221,16 +263,16 @@ export const SignInScreen: React.FC<SignInScreenProps> = ({
           </div>
           <div className="divide-y divide-outline-variant/30 py-1 text-xs">
             <div className="py-2 flex items-center justify-between">
-              <span>Marcus L. resolved blocker <strong className="text-primary font-mono">PLS-882</strong></span>
-              <span className="text-[10px] font-mono text-emerald-400">PR Merged</span>
+              <span>Sarah C. created project <strong className="text-primary font-mono">Pulse Dashboard</strong></span>
+              <span className="text-[10px] font-mono text-emerald-400">Admin</span>
             </div>
             <div className="py-2 flex items-center justify-between">
-              <span>Sarah K. published 8 tokens to Nova AI v1.2</span>
-              <span className="text-[10px] font-mono text-primary">Figma v1.2</span>
+              <span>Alex M. assigned task to Elena R.</span>
+              <span className="text-[10px] font-mono text-primary">PM Action</span>
             </div>
             <div className="py-2 flex items-center justify-between">
-              <span>FinPulse Redesign: Hotfix deployed</span>
-              <span className="text-[10px] font-mono text-secondary">Prod Live</span>
+              <span>Elena R. moved task to <strong className="text-secondary font-mono">In Progress</strong></span>
+              <span className="text-[10px] font-mono text-secondary">Dev Active</span>
             </div>
           </div>
         </div>

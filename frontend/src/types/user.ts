@@ -1,4 +1,5 @@
-export type UserRole = 'Admin' | 'PM' | 'Developer' | 'Lead';
+export type ServerRole = 'ADMIN' | 'PM' | 'DEVELOPER';
+export type UserRole = 'Admin' | 'PM' | 'Developer' | 'Lead' | ServerRole;
 
 export interface User {
   id: string;
@@ -9,4 +10,5 @@ export interface User {
   pod?: string;
   cluster?: string;
   status?: 'online' | 'offline' | 'busy';
+  createdAt?: string;
 }

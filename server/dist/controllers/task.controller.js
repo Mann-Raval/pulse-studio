@@ -3,6 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.updateTask = exports.updateTaskStatus = exports.getTaskById = exports.getProjectTasks = exports.createTask = void 0;
 const client_1 = require("@prisma/client");
 const prisma_js_1 = require("../lib/prisma.js");
+const index_js_1 = require("../socket/index.js");
 const createTask = async (req, res, next) => {
     try {
         const { projectId } = req.params;
@@ -57,7 +58,7 @@ const createTask = async (req, res, next) => {
             }
         }
         // Atomic transaction: create Task + create Notification for developer if assigned
-        const createdTask = await prisma_js_1.prisma.$transaction(async (tx) => {
+        const { task: createdTask, notification } = await prisma_js_1.prisma.$transaction(async (tx) => {
             const task = await tx.task.create({
                 data: {
                     projectId,
@@ -77,8 +78,9 @@ const createTask = async (req, res, next) => {
                     },
                 },
             });
+            let createdNotification = null;
             if (assignedToId) {
-                await tx.notification.create({
+                createdNotification = await tx.notification.create({
                     data: {
                         userId: assignedToId,
                         type: 'TASK_ASSIGNED',
@@ -87,8 +89,12 @@ const createTask = async (req, res, next) => {
                     },
                 });
             }
-            return task;
+            return { task, notification: createdNotification };
         });
+        // Real-time WebSocket emission after successful commit
+        if (notification && assignedToId) {
+            (0, index_js_1.broadcastNotification)(assignedToId, notification);
+        }
         res.status(201).json({ task: createdTask });
     }
     catch (error) {
@@ -352,9 +358,10 @@ const updateTaskStatus = async (req, res, next) => {
                     },
                 },
             });
+            let pmNotification = null;
             // If new status is IN_REVIEW, notify the project's PM
             if (newStatus === client_1.TaskStatus.IN_REVIEW && oldStatus !== client_1.TaskStatus.IN_REVIEW) {
-                await tx.notification.create({
+                pmNotification = await tx.notification.create({
                     data: {
                         userId: task.project.createdById,
                         type: 'TASK_IN_REVIEW',
@@ -363,9 +370,27 @@ const updateTaskStatus = async (req, res, next) => {
                     },
                 });
             }
-            return { task: updatedTask, activityLog };
+            return { task: updatedTask, activityLog, pmNotification };
         });
-        res.status(200).json(result);
+        // Real-time WebSocket emission after successful transaction commit
+        (0, index_js_1.broadcastTaskActivity)({
+            id: result.activityLog.id,
+            taskId: result.task.id,
+            taskTitle: result.task.title,
+            projectId: result.task.projectId,
+            projectName: result.task.project.name,
+            changedBy: {
+                id: result.activityLog.changedBy.id,
+                name: result.activityLog.changedBy.name,
+            },
+            fromStatus: result.activityLog.fromStatus,
+            toStatus: result.activityLog.toStatus,
+            changedAt: result.activityLog.changedAt,
+        }, result.task.assignedToId);
+        if (result.pmNotification) {
+            (0, index_js_1.broadcastNotification)(result.pmNotification.userId, result.pmNotification);
+        }
+        res.status(200).json({ task: result.task, activityLog: result.activityLog });
     }
     catch (error) {
         next(error);
@@ -439,7 +464,7 @@ const updateTask = async (req, res, next) => {
         }
         const oldStatus = task.status;
         const oldAssigneeId = task.assignedToId;
-        const updatedTask = await prisma_js_1.prisma.$transaction(async (tx) => {
+        const result = await prisma_js_1.prisma.$transaction(async (tx) => {
             const updated = await tx.task.update({
                 where: { id },
                 data: {
@@ -459,18 +484,26 @@ const updateTask = async (req, res, next) => {
                     },
                 },
             });
+            let activityLog = null;
+            let pmNotification = null;
+            let devNotification = null;
             // If status changed, log activity and send PM notification if IN_REVIEW
             if (status !== undefined && status !== oldStatus) {
-                await tx.taskActivityLog.create({
+                activityLog = await tx.taskActivityLog.create({
                     data: {
                         taskId: task.id,
                         changedById: userId,
                         fromStatus: oldStatus,
                         toStatus: status,
                     },
+                    include: {
+                        changedBy: {
+                            select: { id: true, name: true, email: true, role: true },
+                        },
+                    },
                 });
                 if (status === client_1.TaskStatus.IN_REVIEW && oldStatus !== client_1.TaskStatus.IN_REVIEW) {
-                    await tx.notification.create({
+                    pmNotification = await tx.notification.create({
                         data: {
                             userId: task.project.createdById,
                             type: 'TASK_IN_REVIEW',
@@ -482,7 +515,7 @@ const updateTask = async (req, res, next) => {
             }
             // If assigned to a new developer, create notification
             if (assignedToId && assignedToId !== oldAssigneeId) {
-                await tx.notification.create({
+                devNotification = await tx.notification.create({
                     data: {
                         userId: assignedToId,
                         type: 'TASK_ASSIGNED',
@@ -491,9 +524,32 @@ const updateTask = async (req, res, next) => {
                     },
                 });
             }
-            return updated;
+            return { updated, activityLog, pmNotification, devNotification };
         });
-        res.status(200).json({ task: updatedTask });
+        // Real-time WebSocket emission after successful transaction commit
+        if (result.activityLog) {
+            (0, index_js_1.broadcastTaskActivity)({
+                id: result.activityLog.id,
+                taskId: result.updated.id,
+                taskTitle: result.updated.title,
+                projectId: result.updated.projectId,
+                projectName: result.updated.project.name,
+                changedBy: {
+                    id: result.activityLog.changedBy.id,
+                    name: result.activityLog.changedBy.name,
+                },
+                fromStatus: result.activityLog.fromStatus,
+                toStatus: result.activityLog.toStatus,
+                changedAt: result.activityLog.changedAt,
+            }, result.updated.assignedToId);
+        }
+        if (result.pmNotification) {
+            (0, index_js_1.broadcastNotification)(result.pmNotification.userId, result.pmNotification);
+        }
+        if (result.devNotification && assignedToId) {
+            (0, index_js_1.broadcastNotification)(assignedToId, result.devNotification);
+        }
+        res.status(200).json({ task: result.updated });
     }
     catch (error) {
         next(error);
