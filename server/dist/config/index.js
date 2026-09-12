@@ -10,7 +10,7 @@ dotenv_1.default.config();
 const envSchema = zod_1.z.object({
     PORT: zod_1.z.string().default('5000').transform(Number),
     NODE_ENV: zod_1.z.enum(['development', 'production', 'test']).default('development'),
-    CLIENT_URL: zod_1.z.string().default('http://localhost:5173'),
+    CLIENT_URL: zod_1.z.string().default('http://localhost:5173').transform((url) => url.replace(/\/+$/, '')),
     DATABASE_URL: zod_1.z.string().min(1, 'DATABASE_URL is required'),
     JWT_ACCESS_SECRET: zod_1.z.string().min(16, 'JWT_ACCESS_SECRET must be at least 16 chars'),
     JWT_ACCESS_EXPIRES_IN: zod_1.z.string().default('15m'),
