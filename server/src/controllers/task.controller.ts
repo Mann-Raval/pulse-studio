@@ -1,7 +1,8 @@
 import { Response, NextFunction } from 'express';
-import { Role, TaskStatus, Prisma } from '@prisma/client';
+import { Role, TaskStatus, Prisma, Notification } from '@prisma/client';
 import { prisma } from '../lib/prisma.js';
 import { AuthenticatedRequest } from '../types/index.js';
+import { broadcastTaskActivity, broadcastNotification } from '../socket/index.js';
 
 export const createTask = async (
   req: AuthenticatedRequest,
@@ -68,7 +69,7 @@ export const createTask = async (
     }
 
     // Atomic transaction: create Task + create Notification for developer if assigned
-    const createdTask = await prisma.$transaction(async (tx) => {
+    const { task: createdTask, notification } = await prisma.$transaction(async (tx) => {
       const task = await tx.task.create({
         data: {
           projectId,
@@ -89,8 +90,9 @@ export const createTask = async (
         },
       });
 
+      let createdNotification: Notification | null = null;
       if (assignedToId) {
-        await tx.notification.create({
+        createdNotification = await tx.notification.create({
           data: {
             userId: assignedToId,
             type: 'TASK_ASSIGNED',
@@ -100,8 +102,13 @@ export const createTask = async (
         });
       }
 
-      return task;
+      return { task, notification: createdNotification };
     });
+
+    // Real-time WebSocket emission after successful commit
+    if (notification && assignedToId) {
+      broadcastNotification(assignedToId, notification);
+    }
 
     res.status(201).json({ task: createdTask });
   } catch (error) {
@@ -400,9 +407,10 @@ export const updateTaskStatus = async (
         },
       });
 
+      let pmNotification: Notification | null = null;
       // If new status is IN_REVIEW, notify the project's PM
       if (newStatus === TaskStatus.IN_REVIEW && oldStatus !== TaskStatus.IN_REVIEW) {
-        await tx.notification.create({
+        pmNotification = await tx.notification.create({
           data: {
             userId: task.project.createdById,
             type: 'TASK_IN_REVIEW',
@@ -412,10 +420,33 @@ export const updateTaskStatus = async (
         });
       }
 
-      return { task: updatedTask, activityLog };
+      return { task: updatedTask, activityLog, pmNotification };
     });
 
-    res.status(200).json(result);
+    // Real-time WebSocket emission after successful transaction commit
+    broadcastTaskActivity(
+      {
+        id: result.activityLog.id,
+        taskId: result.task.id,
+        taskTitle: result.task.title,
+        projectId: result.task.projectId,
+        projectName: result.task.project.name,
+        changedBy: {
+          id: result.activityLog.changedBy.id,
+          name: result.activityLog.changedBy.name,
+        },
+        fromStatus: result.activityLog.fromStatus,
+        toStatus: result.activityLog.toStatus,
+        changedAt: result.activityLog.changedAt,
+      },
+      result.task.assignedToId
+    );
+
+    if (result.pmNotification) {
+      broadcastNotification(result.pmNotification.userId, result.pmNotification);
+    }
+
+    res.status(200).json({ task: result.task, activityLog: result.activityLog });
   } catch (error) {
     next(error);
   }
@@ -502,7 +533,7 @@ export const updateTask = async (
     const oldStatus = task.status;
     const oldAssigneeId = task.assignedToId;
 
-    const updatedTask = await prisma.$transaction(async (tx) => {
+    const result = await prisma.$transaction(async (tx) => {
       const updated = await tx.task.update({
         where: { id },
         data: {
@@ -523,19 +554,28 @@ export const updateTask = async (
         },
       });
 
+      let activityLog: any = null;
+      let pmNotification: Notification | null = null;
+      let devNotification: Notification | null = null;
+
       // If status changed, log activity and send PM notification if IN_REVIEW
       if (status !== undefined && status !== oldStatus) {
-        await tx.taskActivityLog.create({
+        activityLog = await tx.taskActivityLog.create({
           data: {
             taskId: task.id,
             changedById: userId,
             fromStatus: oldStatus,
             toStatus: status,
           },
+          include: {
+            changedBy: {
+              select: { id: true, name: true, email: true, role: true },
+            },
+          },
         });
 
         if (status === TaskStatus.IN_REVIEW && oldStatus !== TaskStatus.IN_REVIEW) {
-          await tx.notification.create({
+          pmNotification = await tx.notification.create({
             data: {
               userId: task.project.createdById,
               type: 'TASK_IN_REVIEW',
@@ -548,7 +588,7 @@ export const updateTask = async (
 
       // If assigned to a new developer, create notification
       if (assignedToId && assignedToId !== oldAssigneeId) {
-        await tx.notification.create({
+        devNotification = await tx.notification.create({
           data: {
             userId: assignedToId,
             type: 'TASK_ASSIGNED',
@@ -558,10 +598,39 @@ export const updateTask = async (
         });
       }
 
-      return updated;
+      return { updated, activityLog, pmNotification, devNotification };
     });
 
-    res.status(200).json({ task: updatedTask });
+    // Real-time WebSocket emission after successful transaction commit
+    if (result.activityLog) {
+      broadcastTaskActivity(
+        {
+          id: result.activityLog.id,
+          taskId: result.updated.id,
+          taskTitle: result.updated.title,
+          projectId: result.updated.projectId,
+          projectName: result.updated.project.name,
+          changedBy: {
+            id: result.activityLog.changedBy.id,
+            name: result.activityLog.changedBy.name,
+          },
+          fromStatus: result.activityLog.fromStatus,
+          toStatus: result.activityLog.toStatus,
+          changedAt: result.activityLog.changedAt,
+        },
+        result.updated.assignedToId
+      );
+    }
+
+    if (result.pmNotification) {
+      broadcastNotification(result.pmNotification.userId, result.pmNotification);
+    }
+
+    if (result.devNotification && assignedToId) {
+      broadcastNotification(assignedToId, result.devNotification);
+    }
+
+    res.status(200).json({ task: result.updated });
   } catch (error) {
     next(error);
   }

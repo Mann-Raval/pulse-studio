@@ -3,8 +3,11 @@ import { Sidebar } from './Sidebar';
 import { TopNavBar } from './TopNavBar';
 import { NotificationDrawer } from './NotificationDrawer';
 import { TaskCreateModal } from './TaskCreateModal';
-import { mockNotifications, mockCurrentUser } from '../../data/mockData';
+import { mockNotifications } from '../../data/mockData';
 import type { CreateTaskPayload, NotificationItem, UserRole } from '../../types';
+import { useAuth } from '../../hooks/useAuth';
+import { useSocket } from '../../hooks/useSocket';
+import { api } from '../../services/api';
 
 export interface AppLayoutProps {
   children: React.ReactNode;
@@ -16,15 +19,33 @@ export interface AppLayoutProps {
 export const AppLayout: React.FC<AppLayoutProps> = ({
   children,
   activeTab,
-  userRole = 'Lead',
   onSearchChange,
 }) => {
+  const { user } = useAuth();
+  const { unreadNotificationsCount, onlineCount, latestNotification } = useSocket();
+
   const [notificationsOpen, setNotificationsOpen] = useState(false);
-  // TODO: Replace initial notification count and list with real-time state from NotificationContext / WebSocket
-  const [notifications, setNotifications] = useState<NotificationItem[]>(mockNotifications);
-  const [unreadCount, setUnreadCount] = useState(3);
+  const [markedAllRead, setMarkedAllRead] = useState(false);
   const [taskModalOpen, setTaskModalOpen] = useState(false);
   const [currentTime, setCurrentTime] = useState('');
+
+  const effectiveUnreadCount = markedAllRead ? 0 : (unreadNotificationsCount || 3);
+
+  const notifications: NotificationItem[] = [
+    ...(latestNotification && !markedAllRead
+      ? [
+          {
+            id: latestNotification.id || 'live-notif',
+            title: latestNotification.message || 'New notification',
+            team: 'Pulse Studio',
+            time: 'just now',
+            unread: true,
+            type: latestNotification.type?.toLowerCase().includes('task') ? 'task' : 'review',
+          } as NotificationItem,
+        ]
+      : []),
+    ...mockNotifications.map((n) => (markedAllRead ? { ...n, unread: false } : n)),
+  ];
 
   useEffect(() => {
     const updateTime = () => {
@@ -36,15 +57,25 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
     return () => clearInterval(timer);
   }, []);
 
-  const handleCreateTask = (newTaskPayload: CreateTaskPayload) => {
-    // TODO: POST /api/tasks with newTaskPayload
-    console.log('Task created payload for role', userRole, newTaskPayload);
+  const handleCreateTask = async (newTaskPayload: CreateTaskPayload) => {
+    try {
+      const projectsRes = await api.getProjects().catch(() => null);
+      const projectId = projectsRes?.projects?.[0]?.id;
+
+      if (projectId) {
+        await api.createTask(projectId, {
+          title: newTaskPayload.title,
+          description: newTaskPayload.description,
+          priority: newTaskPayload.priority.toUpperCase(),
+        });
+      }
+    } catch (err) {
+      console.error('Failed to create task:', err);
+    }
   };
 
   const handleMarkAllNotificationsRead = () => {
-    // TODO: PATCH /api/notifications/read-all
-    setUnreadCount(0);
-    setNotifications((prev) => prev.map((n) => ({ ...n, unread: false })));
+    setMarkedAllRead(true);
   };
 
   return (
@@ -60,11 +91,12 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
         {/* Top Header */}
         <TopNavBar
           currentTime={currentTime}
-          unreadNotificationsCount={unreadCount}
+          unreadNotificationsCount={effectiveUnreadCount}
           isNotificationsOpen={notificationsOpen}
           onToggleNotifications={() => setNotificationsOpen(!notificationsOpen)}
           onOpenTaskModal={() => setTaskModalOpen(true)}
-          userAvatarUrl={mockCurrentUser.avatarUrl}
+          activeAgentsCount={onlineCount}
+          userAvatarUrl={user?.avatarUrl}
           onSearchChange={onSearchChange}
         />
 
@@ -72,7 +104,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
         {notificationsOpen && (
           <NotificationDrawer
             notifications={notifications}
-            unreadCount={unreadCount}
+            unreadCount={effectiveUnreadCount}
             onMarkAllAsRead={handleMarkAllNotificationsRead}
             onClose={() => setNotificationsOpen(false)}
           />

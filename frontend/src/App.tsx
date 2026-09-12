@@ -8,63 +8,69 @@ import {
   ActivityScreen,
 } from './pages';
 import { ProtectedRoute } from './components/auth/ProtectedRoute';
+import { AuthProvider } from './context/AuthContext';
+import { SocketProvider } from './context/SocketContext';
 
 export function App() {
   return (
     <BrowserRouter>
-      <Routes>
-        {/* Public Authentication Route */}
-        <Route path="/" element={<SignInScreen />} />
+      <AuthProvider>
+        <SocketProvider>
+          <Routes>
+            {/* Public Authentication Route */}
+            <Route path="/" element={<SignInScreen />} />
 
-        {/* Authenticated Workspace Routes */}
-        <Route
-          path="/dashboard"
-          element={
-            <ProtectedRoute allowedRoles={['Admin']}>
-              <DashboardScreen />
-            </ProtectedRoute>
-          }
-        />
+            {/* Authenticated Workspace Routes */}
+            <Route
+              path="/dashboard"
+              element={
+                <ProtectedRoute allowedRoles={['Admin', 'ADMIN']}>
+                  <DashboardScreen />
+                </ProtectedRoute>
+              }
+            />
 
-        <Route
-          path="/pm"
-          element={
-            <ProtectedRoute allowedRoles={['PM', 'Admin']}>
-              <PMScreen />
-            </ProtectedRoute>
-          }
-        />
+            <Route
+              path="/pm"
+              element={
+                <ProtectedRoute allowedRoles={['PM', 'Admin', 'ADMIN']}>
+                  <PMScreen />
+                </ProtectedRoute>
+              }
+            />
 
-        <Route
-          path="/developer"
-          element={
-            <ProtectedRoute allowedRoles={['Developer', 'Admin']}>
-              <DeveloperScreen />
-            </ProtectedRoute>
-          }
-        />
+            <Route
+              path="/developer"
+              element={
+                <ProtectedRoute allowedRoles={['Developer', 'DEVELOPER', 'Admin', 'ADMIN']}>
+                  <DeveloperScreen />
+                </ProtectedRoute>
+              }
+            />
 
-        <Route
-          path="/project-board"
-          element={
-            <ProtectedRoute allowedRoles={['Admin', 'PM', 'Developer']}>
-              <ProjectBoardScreen />
-            </ProtectedRoute>
-          }
-        />
+            <Route
+              path="/project-board"
+              element={
+                <ProtectedRoute allowedRoles={['Admin', 'ADMIN', 'PM', 'Developer', 'DEVELOPER']}>
+                  <ProjectBoardScreen />
+                </ProtectedRoute>
+              }
+            />
 
-        <Route
-          path="/activity"
-          element={
-            <ProtectedRoute allowedRoles={['Admin', 'PM', 'Developer']}>
-              <ActivityScreen />
-            </ProtectedRoute>
-          }
-        />
+            <Route
+              path="/activity"
+              element={
+                <ProtectedRoute allowedRoles={['Admin', 'ADMIN', 'PM', 'Developer', 'DEVELOPER']}>
+                  <ActivityScreen />
+                </ProtectedRoute>
+              }
+            />
 
-        {/* Fallback redirect */}
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
+            {/* Fallback redirect */}
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </SocketProvider>
+      </AuthProvider>
     </BrowserRouter>
   );
 }

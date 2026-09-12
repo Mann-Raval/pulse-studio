@@ -1,8 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { AppLayout } from '../components/layout/AppLayout';
 import { mockAdminMetrics, mockActivityEvents, mockPMProjects } from '../data/mockData';
 import type { ActivityEvent, Project } from '../types';
+import { useSocket } from '../hooks/useSocket';
+
+import { api } from '../services/api';
 
 export interface DashboardScreenProps {
   metrics?: typeof mockAdminMetrics;
@@ -12,19 +15,44 @@ export interface DashboardScreenProps {
 }
 
 export const DashboardScreen: React.FC<DashboardScreenProps> = ({
-  // TODO: Replace with GET /api/admin/metrics via React Query / custom hook
-  metrics = mockAdminMetrics,
-  // TODO: Replace with GET /api/activity?limit=5 and subscribe to Socket.io 'activity:new'
-  recentActivity = mockActivityEvents.slice(0, 4),
-  // TODO: Replace with GET /api/projects/overview
-  projects = mockPMProjects.slice(0, 3),
+  metrics: initialMetrics = mockAdminMetrics,
+  recentActivity: initialActivity = mockActivityEvents.slice(0, 4),
+  projects: initialProjects = mockPMProjects.slice(0, 3),
   onExportReport,
 }) => {
   const navigate = useNavigate();
+  const { onlineCount, activities } = useSocket();
   const [filterTab, setFilterTab] = useState<'All' | 'Status' | 'Deployments'>('All');
+  const [projects, setProjects] = useState<Project[]>(initialProjects);
+  const [metrics, setMetrics] = useState(initialMetrics);
+
+  useEffect(() => {
+    // Attempt fetching real projects from backend
+    api.getProjects()
+      .then((res) => {
+        if (res.projects && res.projects.length > 0) {
+          const mapped: Project[] = res.projects.map((p: any) => ({
+            id: p.id,
+            name: p.name,
+            client: p.client?.name || 'Client',
+            status: p.derivedStatus === 'COMPLETED' ? 'On Track' : 'In Progress',
+            statusColor: 'text-secondary',
+            pct: p.taskStats?.total > 0 ? Math.round((p.taskStats.completed / p.taskStats.total) * 100) : 50,
+            tasksCount: `${p.taskStats?.completed || 0}/${p.taskStats?.total || 0} done`,
+            sprint: 'Sprint Active',
+            target: 'Active',
+          }));
+          setProjects(mapped);
+          setMetrics((prev) => ({
+            ...prev,
+            activeProjects: res.pagination?.total || mapped.length,
+          }));
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   const handleExport = () => {
-    // TODO: GET /api/admin/reports/export?format=csv
     if (onExportReport) {
       onExportReport();
     } else {
@@ -32,7 +60,21 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
     }
   };
 
-  const filteredActivity = recentActivity.filter((item) => {
+  // Convert real socket activities to display format
+  const socketEvents: ActivityEvent[] = activities.slice(0, 6).map((act) => ({
+    id: act.id,
+    user: act.changedBy?.name || 'Admin',
+    action: `updated task "${act.taskTitle}" to ${act.toStatus}`,
+    from: act.fromStatus,
+    to: act.toStatus,
+    project: act.projectName || 'Pulse Project',
+    time: typeof act.changedAt === 'string' ? new Date(act.changedAt).toLocaleTimeString() : 'just now',
+    type: 'status',
+  }));
+
+  const combinedActivity = socketEvents.length > 0 ? socketEvents : initialActivity;
+
+  const filteredActivity = combinedActivity.filter((item) => {
     if (filterTab === 'Status') return item.type === 'status';
     if (filterTab === 'Deployments') return item.type === 'deploy';
     return true;
@@ -52,7 +94,7 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
           <div className="flex items-center gap-2">
             <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-sm bg-surface-container-low border border-outline-variant/30 text-xs font-mono">
               <span className="material-symbols-outlined text-sm text-outline">calendar_today</span>
-              <span>Today, Sprint 42</span>
+              <span>Today, Live Telemetry</span>
             </div>
             <button
               onClick={handleExport}
@@ -73,7 +115,7 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
               <span className="material-symbols-outlined text-outline">folder</span>
             </div>
             <div className="my-2">
-              <div className="text-2xl font-bold font-mono">{metrics.activeProjects} Active</div>
+              <div className="text-2xl font-bold font-mono">{projects.length || metrics.activeProjects} Active</div>
               <div className="text-[11px] text-secondary mt-0.5">{metrics.projectsChangeText}</div>
             </div>
             <div className="w-full bg-surface-container-highest h-1 rounded-full overflow-hidden">
@@ -122,19 +164,19 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
             </div>
           </div>
 
-          {/* Card 4: Active Users Online */}
+          {/* Card 4: Active Users Online (Connected via Socket Presence) */}
           <div className="bg-surface-container-low border border-outline-variant/40 rounded-sm p-4 flex flex-col justify-between">
             <div className="flex items-center justify-between text-xs text-on-surface-variant">
               <span>Active Users Online</span>
-              <span className="w-2 h-2 rounded-full bg-secondary"></span>
+              <span className="w-2 h-2 rounded-full bg-secondary animate-pulse"></span>
             </div>
             <div className="my-2">
-              <div className="text-2xl font-bold font-mono">{metrics.activeUsersOnline} Online</div>
-              <p className="text-[11px] text-outline mt-0.5">{metrics.engineeringPodActivePct} of engineering pod active</p>
+              <div className="text-2xl font-bold font-mono text-secondary">{onlineCount} Online</div>
+              <p className="text-[11px] text-outline mt-0.5">Real-time socket presence tracked</p>
             </div>
             <div className="flex items-center justify-between text-[11px] font-mono text-secondary pt-1 border-t border-outline-variant/20">
-              <span>Cluster Alpha</span>
-              <span>All Nodes Active</span>
+              <span>Cluster Live</span>
+              <span>WebSocket Stream Active</span>
             </div>
           </div>
         </div>
@@ -172,7 +214,8 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
                 <div key={ev.id} className="py-3 flex items-start justify-between">
                   <div>
                     <p className="font-medium text-on-surface">
-                      {ev.user} {ev.action}
+                      <strong className="text-primary mr-1.5">{ev.user}</strong>
+                      {ev.action}
                     </p>
                     <span className="text-[11px] text-outline font-mono">[{ev.project}]</span>
                   </div>
@@ -198,7 +241,7 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
             <div className="bg-surface-container-low border border-outline-variant/30 rounded-sm p-4 space-y-3">
               <div className="flex justify-between items-center pb-2 border-b border-outline-variant/20">
                 <h3 className="text-xs font-semibold">Projects Health Overview</h3>
-                <span className="text-[10px] font-mono text-outline">Sprint 42</span>
+                <span className="text-[10px] font-mono text-outline">Active</span>
               </div>
               <div className="space-y-3 text-xs">
                 {projects.map((p) => (

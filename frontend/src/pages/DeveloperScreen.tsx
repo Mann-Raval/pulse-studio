@@ -1,8 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AppLayout } from '../components/layout/AppLayout';
 import { mockDevTasks } from '../data/mockData';
 import type { Task } from '../types';
+import { useAuth } from '../hooks/useAuth';
+import { api } from '../services/api';
+
 
 export interface DeveloperScreenProps {
   tasks?: Task[];
@@ -16,9 +19,7 @@ export interface DeveloperScreenProps {
 }
 
 export const DeveloperScreen: React.FC<DeveloperScreenProps> = ({
-  // TODO: Replace with GET /api/developer/tasks and subscribe to Socket.io 'task:assigned'
-  tasks = mockDevTasks,
-  userName = 'Alex Rivera',
+  tasks: initialTasks = mockDevTasks,
   sprintName = 'Sprint 4',
   activeFocusCount = 8,
   dueThisWeekCount = 3,
@@ -27,7 +28,42 @@ export const DeveloperScreen: React.FC<DeveloperScreenProps> = ({
   onSelectTask,
 }) => {
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const [tasks, setTasks] = useState<Task[]>(initialTasks);
   const [filter, setFilter] = useState<'all' | 'in-prog' | 'review' | 'todo'>('all');
+
+  useEffect(() => {
+    // Attempt fetching developer tasks from backend
+    api.getProjects()
+      .then((projRes) => {
+        if (projRes.projects && projRes.projects.length > 0) {
+          const firstProj = projRes.projects[0];
+          api.getProjectTasks(firstProj.id)
+            .then((res) => {
+              if (res.tasks && res.tasks.length > 0) {
+                const mapped: Task[] = res.tasks.map((t: any) => ({
+                  id: t.id,
+                  displayId: t.id.length > 8 ? t.id.slice(0, 8).toUpperCase() : t.id,
+                  title: t.title,
+                  project: firstProj.name,
+                  branch: 'feat/pulse-dev',
+                  due: t.dueDate ? new Date(t.dueDate).toLocaleDateString() : 'Active',
+                  status: t.status === 'TODO' ? 'To Do'
+                    : t.status === 'IN_PROGRESS' ? 'In Progress'
+                    : t.status === 'IN_REVIEW' ? 'In Review'
+                    : 'Done',
+                  priority: (t.priority || 'medium').toLowerCase() as any,
+                  isOverdue: t.isOverdue || false,
+                  description: t.description,
+                }));
+                setTasks(mapped);
+              }
+            })
+            .catch(() => {});
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   const filteredTasks = tasks.filter((t) => {
     if (filter === 'in-prog') return t.status === 'In Progress';
@@ -50,7 +86,9 @@ export const DeveloperScreen: React.FC<DeveloperScreenProps> = ({
         <section className="p-4 rounded-sm bg-[#14171C] border border-outline-variant/40 flex flex-col lg:flex-row items-start lg:items-center justify-between gap-6">
           <div className="flex flex-col gap-1.5">
             <div className="flex items-center gap-2">
-              <span className="text-lg font-bold text-on-surface">Welcome back, {userName}.</span>
+              <span className="text-lg font-bold text-on-surface">
+                Welcome back, {user?.name || 'Elena Rostova'}.
+              </span>
               <span className="px-2 py-0.5 rounded-sm text-[11px] font-mono bg-surface-container border border-outline-variant text-outline">
                 {sprintName}
               </span>
@@ -69,7 +107,7 @@ export const DeveloperScreen: React.FC<DeveloperScreenProps> = ({
           <div className="flex flex-wrap items-center gap-3 w-full lg:w-auto">
             <div className="px-3.5 py-2 rounded-sm bg-[#1B1F26] border border-white/5 min-w-[120px]">
               <span className="text-[11px] font-mono text-outline block">Active Focus</span>
-              <div className="text-xl font-bold font-mono text-on-surface">{activeFocusCount} Assigned</div>
+              <div className="text-xl font-bold font-mono text-on-surface">{tasks.length || activeFocusCount} Assigned</div>
             </div>
             <div className="px-3.5 py-2 rounded-sm bg-[#1B1F26] border border-white/5 min-w-[120px]">
               <span className="text-[11px] font-mono text-outline block">Due This Week</span>
@@ -132,7 +170,7 @@ export const DeveloperScreen: React.FC<DeveloperScreenProps> = ({
                         : 'bg-primary'
                     }`}
                   ></span>
-                  <span className="text-xs font-mono text-outline font-semibold">{t.id}</span>
+                  <span className="text-xs font-mono text-outline font-semibold">{t.displayId || t.id.slice(0, 8).toUpperCase()}</span>
                   <h3 className="text-xs font-medium text-on-surface truncate">{t.title}</h3>
                 </div>
 

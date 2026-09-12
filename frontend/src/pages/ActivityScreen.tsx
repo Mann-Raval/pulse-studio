@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { AppLayout } from '../components/layout/AppLayout';
 import { mockActivityEvents } from '../data/mockData';
 import type { ActivityEvent, ActivityType } from '../types';
+import { useSocket } from '../hooks/useSocket';
+
 
 export interface ActivityScreenProps {
   initialEvents?: ActivityEvent[];
@@ -10,24 +12,45 @@ export interface ActivityScreenProps {
 }
 
 export const ActivityScreen: React.FC<ActivityScreenProps> = ({
-  // TODO: Replace with GET /api/activity and subscribe to Socket.io 'activity:new'
   initialEvents = mockActivityEvents,
   connectionLatencyMs = 14,
   onExportCsv,
 }) => {
-  const [events] = useState<ActivityEvent[]>(initialEvents);
+  const { activities, isConnected } = useSocket();
   const [filterType, setFilterType] = useState<ActivityType>('all');
 
-  const filteredEvents = events.filter(
+  // Convert real socket activities to display format if available
+  const socketEvents: ActivityEvent[] = activities.map((act) => ({
+    id: act.id,
+    user: act.changedBy?.name || 'System',
+    action: `updated task "${act.taskTitle}" from ${act.fromStatus} to ${act.toStatus}`,
+    from: act.fromStatus,
+    to: act.toStatus,
+    project: act.projectName || 'Pulse Project',
+    time: typeof act.changedAt === 'string' ? new Date(act.changedAt).toLocaleTimeString() : new Date().toLocaleTimeString(),
+    type: 'status',
+  }));
+
+  const combinedEvents = [...socketEvents, ...initialEvents];
+
+  const filteredEvents = combinedEvents.filter(
     (e) => filterType === 'all' || e.type === filterType
   );
 
   const handleExport = () => {
-    // TODO: GET /api/activity/export?format=csv
     if (onExportCsv) {
       onExportCsv();
     } else {
-      console.log('Exporting activity CSV...');
+      const csvContent = "data:text/csv;charset=utf-8," 
+        + "User,Action,From,To,Project,Time\n"
+        + filteredEvents.map(e => `"${e.user}","${e.action}","${e.from || ''}","${e.to || ''}","${e.project}","${e.time}"`).join("\n");
+      const encodedUri = encodeURI(csvContent);
+      const link = document.createElement("a");
+      link.setAttribute("href", encodedUri);
+      link.setAttribute("download", "pulse_activity_audit.csv");
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
     }
   };
 
@@ -38,13 +61,17 @@ export const ActivityScreen: React.FC<ActivityScreenProps> = ({
           <div>
             <h1 className="text-xl font-bold text-on-surface">Global Activity Audit & Live Feed</h1>
             <p className="text-xs text-on-surface-variant">
-              Real-time telemetry event trace across all micro-services and project repos
+              Real-time telemetry event trace across all projects and tasks via Socket.io
             </p>
           </div>
           <div className="flex items-center gap-2 font-mono text-xs">
-            <span className="px-2.5 py-1 rounded-sm bg-surface-container border border-secondary/30 text-secondary flex items-center gap-1.5">
-              <span className="w-1.5 h-1.5 rounded-full bg-secondary"></span>
-              Connected ({connectionLatencyMs}ms)
+            <span className={`px-2.5 py-1 rounded-sm border flex items-center gap-1.5 ${
+              isConnected
+                ? 'bg-surface-container border-secondary/30 text-secondary'
+                : 'bg-surface-container border-outline-variant text-outline'
+            }`}>
+              <span className={`w-1.5 h-1.5 rounded-full ${isConnected ? 'bg-secondary animate-pulse' : 'bg-outline'}`}></span>
+              {isConnected ? `Connected (${connectionLatencyMs}ms)` : 'Offline'}
             </span>
             <button
               onClick={handleExport}

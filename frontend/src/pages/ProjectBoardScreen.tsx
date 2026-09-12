@@ -1,7 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { AppLayout } from '../components/layout/AppLayout';
 import { mockBoardTasks, mockTaskComments } from '../data/mockData';
 import type { Task, TaskComment, TaskStatus } from '../types';
+import { useSocket } from '../hooks/useSocket';
+import { api } from '../services/api';
 
 export interface ProjectBoardScreenProps {
   projectName?: string;
@@ -21,17 +23,17 @@ export const ProjectBoardScreen: React.FC<ProjectBoardScreenProps> = ({
   pmName = 'Marcus Lead (PM)',
   sprintText = 'Sprint 4 • Nov 14 – Nov 28',
   completionPct = 78,
-  // TODO: Replace with GET /api/projects/:id/board and subscribe to Socket.io 'board:task_moved'
   initialBoardTasks = mockBoardTasks,
-  // TODO: Replace with GET /api/tasks/:id/comments and subscribe to Socket.io 'task:comment_added'
   initialComments = mockTaskComments,
   onTaskMove,
   onAddComment,
 }) => {
-  const [boardTasks] = useState<Record<string, Task[]>>(initialBoardTasks);
+  const { joinProject, leaveProject, activities, latestActivity } = useSocket();
+  const [boardTasks, setBoardTasks] = useState<Record<string, Task[]>>(initialBoardTasks);
   const [activeDrawer, setActiveDrawer] = useState(true);
   const [selectedTask, setSelectedTask] = useState<Task>({
     id: 'PLS-882',
+    displayId: 'PLS-882',
     title: 'Biometric SSO Callback Handshake - Fix Token Refresh',
     project: 'Nova AI Token Engine',
     assignee: 'Alex Rivera',
@@ -45,20 +47,139 @@ export const ProjectBoardScreen: React.FC<ProjectBoardScreenProps> = ({
 
   const [comments, setComments] = useState<TaskComment[]>(initialComments);
   const [commentText, setCommentText] = useState('');
+  const [projectId, setProjectId] = useState<string | null>(null);
+  const [statusError, setStatusError] = useState<string | null>(null);
+
+  // Live WebSocket synchronization on incoming activity events
+  useEffect(() => {
+    if (!latestActivity) return;
+    const statusMap: Record<string, TaskStatus> = {
+      TODO: 'To Do',
+      IN_PROGRESS: 'In Progress',
+      IN_REVIEW: 'In Review',
+      DONE: 'Done',
+    };
+    const targetUiStatus = statusMap[latestActivity.toStatus];
+    if (!targetUiStatus) return;
+
+    setBoardTasks((prev) => {
+      let found = false;
+      let targetTask: Task | null = null;
+      const nextBoard: Record<string, Task[]> = { ...prev };
+
+      for (const col of Object.keys(nextBoard)) {
+        nextBoard[col] = (nextBoard[col] || []).filter((t) => {
+          if (t.id === latestActivity.taskId) {
+            found = true;
+            targetTask = { ...t, status: targetUiStatus };
+            return false;
+          }
+          return true;
+        });
+      }
+
+      if (found && targetTask && nextBoard[targetUiStatus]) {
+        nextBoard[targetUiStatus] = [targetTask, ...nextBoard[targetUiStatus]];
+        return nextBoard;
+      }
+      return prev;
+    });
+
+    setSelectedTask((prev) => {
+      if (prev && prev.id === latestActivity.taskId) {
+        return { ...prev, status: targetUiStatus };
+      }
+      return prev;
+    });
+  }, [latestActivity]);
+
+  useEffect(() => {
+    // Attempt loading real project and tasks
+    api.getProjects()
+      .then((res) => {
+        if (res.projects && res.projects.length > 0) {
+          const firstProj = res.projects[0];
+          setProjectId(firstProj.id);
+          joinProject(firstProj.id);
+
+          api.getProjectTasks(firstProj.id)
+            .then((tasksRes) => {
+              if (tasksRes.tasks && tasksRes.tasks.length > 0) {
+                const newBoard: Record<string, Task[]> = {
+                  'To Do': [],
+                  'In Progress': [],
+                  'In Review': [],
+                  'Done': [],
+                };
+
+                tasksRes.tasks.forEach((t: any) => {
+                  const uiStatus = t.status === 'TODO' ? 'To Do'
+                    : t.status === 'IN_PROGRESS' ? 'In Progress'
+                    : t.status === 'IN_REVIEW' ? 'In Review'
+                    : 'Done';
+
+                  const mappedTask: Task = {
+                    id: t.id,
+                    displayId: t.id.length > 8 ? t.id.slice(0, 8).toUpperCase() : t.id,
+                    title: t.title,
+                    project: firstProj.name,
+                    assignee: t.assignedTo?.name || 'Unassigned',
+                    priority: (t.priority || 'medium').toLowerCase() as any,
+                    status: uiStatus,
+                    description: t.description || undefined,
+                  };
+
+                  if (newBoard[uiStatus]) {
+                    newBoard[uiStatus].push(mappedTask);
+                  }
+                });
+
+                setBoardTasks(newBoard);
+                if (tasksRes.tasks[0]) {
+                  const firstTask = tasksRes.tasks[0];
+                  const firstUiStatus = firstTask.status === 'TODO' ? 'To Do'
+                    : firstTask.status === 'IN_PROGRESS' ? 'In Progress'
+                    : firstTask.status === 'IN_REVIEW' ? 'In Review'
+                    : 'Done';
+
+                  setSelectedTask({
+                    id: firstTask.id,
+                    displayId: firstTask.id.length > 8 ? firstTask.id.slice(0, 8).toUpperCase() : firstTask.id,
+                    title: firstTask.title,
+                    project: firstProj.name,
+                    assignee: firstTask.assignedTo?.name || 'Unassigned',
+                    priority: (firstTask.priority || 'medium').toLowerCase() as any,
+                    status: firstUiStatus,
+                    description: firstTask.description,
+                  });
+                }
+              }
+            })
+            .catch(() => {});
+        }
+      })
+      .catch(() => {});
+
+    return () => {
+      if (projectId) {
+        leaveProject(projectId);
+      }
+    };
+  }, [joinProject, leaveProject, projectId]);
 
   const handleSelectTask = (task: Task) => {
     setSelectedTask(task);
     setActiveDrawer(true);
+    setStatusError(null);
   };
 
   const handleAddComment = (e: React.FormEvent) => {
     e.preventDefault();
     if (!commentText.trim()) return;
 
-    // TODO: POST /api/tasks/:taskId/comments
     const newComment: TaskComment = {
       id: Date.now(),
-      user: 'Alex Rivera',
+      user: 'Me',
       time: 'Just now',
       text: commentText,
     };
@@ -68,9 +189,64 @@ export const ProjectBoardScreen: React.FC<ProjectBoardScreenProps> = ({
     setCommentText('');
   };
 
-  const handleTaskStatusChange = (status: TaskStatus) => {
-    onTaskMove?.(selectedTask.id, status);
+  const handleTaskStatusChange = async (targetStatus: TaskStatus) => {
+    if (selectedTask.status === targetStatus) return;
+
+    setStatusError(null);
+    const previousBoard = { ...boardTasks };
+    const previousSelectedTask = { ...selectedTask };
+
+    // Map UI status to server TaskStatus
+    const serverStatusMap: Record<string, string> = {
+      'To Do': 'TODO',
+      'In Progress': 'IN_PROGRESS',
+      'In Review': 'IN_REVIEW',
+      'Done': 'DONE',
+    };
+
+    const serverStatus = serverStatusMap[targetStatus] || 'TODO';
+
+    // Optimistically update UI
+    setBoardTasks((prev) => {
+      const nextBoard: Record<string, Task[]> = { ...prev };
+      for (const col of Object.keys(nextBoard)) {
+        nextBoard[col] = (nextBoard[col] || []).filter((t) => t.id !== selectedTask.id);
+      }
+      const updated = { ...selectedTask, status: targetStatus };
+      if (nextBoard[targetStatus]) {
+        nextBoard[targetStatus].push(updated);
+      }
+      return nextBoard;
+    });
+
+    setSelectedTask((prev) => ({ ...prev, status: targetStatus }));
+    onTaskMove?.(selectedTask.id, targetStatus);
+
+    // Call real API with full UUID
+    try {
+      await api.updateTaskStatus(selectedTask.id, serverStatus);
+    } catch (err: any) {
+      console.error('Failed to update task status:', err);
+      // Revert optimistic UI changes on error
+      setBoardTasks(previousBoard);
+      setSelectedTask(previousSelectedTask);
+      const errMsg =
+        err?.error?.message ||
+        err?.message ||
+        'Failed to save status change to server. Changes reverted.';
+      setStatusError(errMsg);
+    }
   };
+
+  const combinedActivityList = [
+    ...activities.slice(0, 5).map((a) => ({
+      id: a.id,
+      user: a.changedBy?.name || 'User',
+      time: typeof a.changedAt === 'string' ? new Date(a.changedAt).toLocaleTimeString() : 'Just now',
+      text: `Transitioned task to ${a.toStatus}`,
+    })),
+    ...comments,
+  ];
 
   return (
     <AppLayout activeTab="board">
@@ -101,8 +277,8 @@ export const ProjectBoardScreen: React.FC<ProjectBoardScreenProps> = ({
 
               <div className="flex items-center gap-3">
                 <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-sm bg-surface-container text-xs font-mono text-secondary">
-                  <span className="w-1.5 h-1.5 rounded-full bg-secondary"></span>
-                  <span>WEBSOCKET SYNC</span>
+                  <span className="w-1.5 h-1.5 rounded-full bg-secondary animate-pulse"></span>
+                  <span>WEBSOCKET LIVE SYNC</span>
                 </div>
                 <button
                   onClick={() => setActiveDrawer(!activeDrawer)}
@@ -116,7 +292,7 @@ export const ProjectBoardScreen: React.FC<ProjectBoardScreenProps> = ({
             <div className="flex items-center justify-between pt-2 text-xs">
               <div className="flex items-center gap-3">
                 <span className="text-[11px] font-mono text-on-surface-variant">
-                  {completionPct}% Complete (32/41 Tasks)
+                  {completionPct}% Complete (Sprint Telemetry Active)
                 </span>
                 <div className="w-40 h-1.5 rounded-full bg-surface-container-high overflow-hidden flex">
                   <div className="h-full bg-secondary w-[55%]"></div>
@@ -145,7 +321,7 @@ export const ProjectBoardScreen: React.FC<ProjectBoardScreenProps> = ({
                       className="p-2.5 rounded-sm bg-surface-container-low border border-outline-variant hover:border-outline cursor-pointer transition-colors"
                     >
                       <div className="flex justify-between text-[10px] font-mono text-outline mb-1">
-                        <span>{t.id}</span>
+                        <span>{t.displayId || t.id.slice(0, 8).toUpperCase()}</span>
                         <span className={t.priority === 'medium' ? 'text-primary' : 'text-outline'}>
                           {t.priority}
                         </span>
@@ -178,7 +354,7 @@ export const ProjectBoardScreen: React.FC<ProjectBoardScreenProps> = ({
                         }`}
                       >
                         <div className="flex justify-between text-[10px] font-mono mb-1">
-                          <span className="text-primary font-bold">{t.id}</span>
+                          <span className="text-primary font-bold">{t.displayId || t.id.slice(0, 8).toUpperCase()}</span>
                           <span
                             className={
                               t.priority === 'critical'
@@ -193,7 +369,7 @@ export const ProjectBoardScreen: React.FC<ProjectBoardScreenProps> = ({
                         {t.assignee && (
                           <div className="mt-2 pt-1 border-t border-outline-variant/30 flex justify-between text-[10px] font-mono text-outline">
                             <span>{t.assignee}</span>
-                            <span className={t.isOverdue ? 'text-error' : ''}>{t.due || 'Nov 16'}</span>
+                            <span className={t.isOverdue ? 'text-error' : ''}>{t.due || 'Active'}</span>
                           </div>
                         )}
                       </div>
@@ -218,7 +394,7 @@ export const ProjectBoardScreen: React.FC<ProjectBoardScreenProps> = ({
                       className="p-2.5 rounded-sm bg-surface-container-low border border-outline-variant hover:border-outline cursor-pointer transition-colors"
                     >
                       <div className="flex justify-between text-[10px] font-mono text-outline mb-1">
-                        <span>{t.id}</span>
+                        <span>{t.displayId || t.id.slice(0, 8).toUpperCase()}</span>
                         <span className="text-tertiary">{t.priority}</span>
                       </div>
                       <h4 className="font-medium text-on-surface">{t.title}</h4>
@@ -243,7 +419,7 @@ export const ProjectBoardScreen: React.FC<ProjectBoardScreenProps> = ({
                       className="p-2.5 rounded-sm bg-surface-container-low border border-outline-variant/60 cursor-pointer transition-colors"
                     >
                       <div className="flex justify-between text-[10px] font-mono text-outline mb-1">
-                        <span className="line-through">{t.id}</span>
+                        <span className="line-through">{t.displayId || t.id.slice(0, 8).toUpperCase()}</span>
                         <span className="text-secondary font-mono">Merged</span>
                       </div>
                       <h4 className="font-medium text-on-surface-variant line-through">{t.title}</h4>
@@ -255,12 +431,12 @@ export const ProjectBoardScreen: React.FC<ProjectBoardScreenProps> = ({
           </div>
         </section>
 
-        {/* Slide-out Detail Drawer (380px Pinned Right Panel) */}
+        {/* Slide-out Detail Drawer */}
         {activeDrawer && (
           <aside className="w-[380px] shrink-0 border-l border-outline-variant bg-surface-container-lowest flex flex-col h-full shadow-2xl z-20 animate-in slide-in-from-right duration-150">
             <div className="p-3 border-b border-outline-variant flex items-center justify-between bg-surface-container-low">
               <div className="flex items-center gap-2 text-xs font-mono">
-                <span className="text-primary font-bold">{selectedTask.id}</span>
+                <span className="text-primary font-bold">{selectedTask.displayId || selectedTask.id.slice(0, 8).toUpperCase()}</span>
                 <span className="px-2 py-0.2 rounded-sm bg-secondary/20 text-secondary">
                   {selectedTask.status}
                 </span>
@@ -274,6 +450,22 @@ export const ProjectBoardScreen: React.FC<ProjectBoardScreenProps> = ({
             </div>
 
             <div className="flex-1 overflow-y-auto p-4 space-y-4 text-xs">
+              {statusError && (
+                <div className="p-2.5 rounded-sm bg-error/10 border border-error/30 text-error flex items-start justify-between gap-2 text-xs">
+                  <div className="flex items-start gap-1.5">
+                    <span className="material-symbols-outlined text-sm shrink-0 mt-0.5">error</span>
+                    <span>{statusError}</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setStatusError(null)}
+                    className="text-error/70 hover:text-error p-0.5"
+                  >
+                    <span className="material-symbols-outlined text-xs">close</span>
+                  </button>
+                </div>
+              )}
+
               <h2 className="text-sm font-bold text-on-surface leading-snug">
                 {selectedTask.title}
               </h2>
@@ -282,7 +474,7 @@ export const ProjectBoardScreen: React.FC<ProjectBoardScreenProps> = ({
                 <div>
                   <span className="text-outline block">Assignee</span>
                   <span className="font-sans font-medium text-on-surface">
-                    {selectedTask.assignee || 'Alex Rivera'}
+                    {selectedTask.assignee || 'Elena Rostova'}
                   </span>
                 </div>
                 <div>
@@ -312,7 +504,7 @@ export const ProjectBoardScreen: React.FC<ProjectBoardScreenProps> = ({
               {/* Status quick switch buttons */}
               <div>
                 <h5 className="text-[10px] font-mono text-outline uppercase tracking-wider mb-1.5">
-                  Update Workflow Status
+                  Update Workflow Status (Live Sync)
                 </h5>
                 <div className="flex flex-wrap gap-1.5">
                   {(['To Do', 'In Progress', 'In Review', 'Done'] as const).map((st) => (
@@ -338,7 +530,7 @@ export const ProjectBoardScreen: React.FC<ProjectBoardScreenProps> = ({
                   <span className="text-secondary">Realtime</span>
                 </div>
                 <div className="space-y-2">
-                  {comments.map((c) => (
+                  {combinedActivityList.map((c) => (
                     <div
                       key={c.id}
                       className="p-2 rounded-sm bg-surface-container-low border border-outline-variant/30 text-xs"

@@ -11,6 +11,7 @@ export interface TaskComment {
 
 export interface Task {
   id: string;
+  displayId?: string;
   title: string;
   project: string;
   assignee?: string;
