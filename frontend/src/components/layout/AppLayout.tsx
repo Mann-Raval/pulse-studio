@@ -3,8 +3,8 @@ import { Sidebar } from './Sidebar';
 import { TopNavBar } from './TopNavBar';
 import { NotificationDrawer } from './NotificationDrawer';
 import { TaskCreateModal } from './TaskCreateModal';
-import { mockNotifications } from '../../data/mockData';
-import type { CreateTaskPayload, NotificationItem, UserRole } from '../../types';
+import { NotificationToast } from '../common/NotificationToast';
+import type { UserRole } from '../../types';
 import { useAuth } from '../../hooks/useAuth';
 import { useSocket } from '../../hooks/useSocket';
 import { api } from '../../services/api';
@@ -22,30 +22,17 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
   onSearchChange,
 }) => {
   const { user } = useAuth();
-  const { unreadNotificationsCount, onlineCount, latestNotification } = useSocket();
+  const {
+    unreadNotificationsCount,
+    notifications,
+    onlineCount,
+    markNotificationAsRead,
+    markAllNotificationsAsRead,
+  } = useSocket();
 
   const [notificationsOpen, setNotificationsOpen] = useState(false);
-  const [markedAllRead, setMarkedAllRead] = useState(false);
   const [taskModalOpen, setTaskModalOpen] = useState(false);
   const [currentTime, setCurrentTime] = useState('');
-
-  const effectiveUnreadCount = markedAllRead ? 0 : (unreadNotificationsCount || 3);
-
-  const notifications: NotificationItem[] = [
-    ...(latestNotification && !markedAllRead
-      ? [
-          {
-            id: latestNotification.id || 'live-notif',
-            title: latestNotification.message || 'New notification',
-            team: 'Pulse Studio',
-            time: 'just now',
-            unread: true,
-            type: latestNotification.type?.toLowerCase().includes('task') ? 'task' : 'review',
-          } as NotificationItem,
-        ]
-      : []),
-    ...mockNotifications.map((n) => (markedAllRead ? { ...n, unread: false } : n)),
-  ];
 
   useEffect(() => {
     const updateTime = () => {
@@ -57,25 +44,26 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
     return () => clearInterval(timer);
   }, []);
 
-  const handleCreateTask = async (newTaskPayload: CreateTaskPayload) => {
+  const handleCreateTask = async (payload: {
+    projectId: string;
+    title: string;
+    description?: string;
+    assignedToId?: string | null;
+    priority: any;
+    dueDate?: string;
+  }) => {
     try {
-      const projectsRes = await api.getProjects().catch(() => null);
-      const projectId = projectsRes?.projects?.[0]?.id;
-
-      if (projectId) {
-        await api.createTask(projectId, {
-          title: newTaskPayload.title,
-          description: newTaskPayload.description,
-          priority: newTaskPayload.priority.toUpperCase(),
-        });
-      }
+      await api.createTask(payload.projectId, {
+        title: payload.title,
+        description: payload.description,
+        assignedToId: payload.assignedToId,
+        priority: String(payload.priority).toUpperCase(),
+        dueDate: payload.dueDate,
+      });
     } catch (err) {
       console.error('Failed to create task:', err);
+      throw err; // Propagate to modal so it displays error banner
     }
-  };
-
-  const handleMarkAllNotificationsRead = () => {
-    setMarkedAllRead(true);
   };
 
   return (
@@ -91,7 +79,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
         {/* Top Header */}
         <TopNavBar
           currentTime={currentTime}
-          unreadNotificationsCount={effectiveUnreadCount}
+          unreadNotificationsCount={unreadNotificationsCount}
           isNotificationsOpen={notificationsOpen}
           onToggleNotifications={() => setNotificationsOpen(!notificationsOpen)}
           onOpenTaskModal={() => setTaskModalOpen(true)}
@@ -104,8 +92,9 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
         {notificationsOpen && (
           <NotificationDrawer
             notifications={notifications}
-            unreadCount={effectiveUnreadCount}
-            onMarkAllAsRead={handleMarkAllNotificationsRead}
+            unreadCount={unreadNotificationsCount}
+            onMarkAsRead={markNotificationAsRead}
+            onMarkAllAsRead={markAllNotificationsAsRead}
             onClose={() => setNotificationsOpen(false)}
           />
         )}
@@ -116,6 +105,9 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
           onClose={() => setTaskModalOpen(false)}
           onCreateTask={handleCreateTask}
         />
+
+        {/* Live Notification Popups (Toast) */}
+        <NotificationToast onOpenNotifications={() => setNotificationsOpen(true)} />
 
         {/* Viewport content */}
         <div className="flex-1 overflow-y-auto">

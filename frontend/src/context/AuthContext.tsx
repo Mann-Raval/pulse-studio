@@ -73,23 +73,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     });
   };
 
-  const switchDemoRole = (role: 'Admin' | 'PM' | 'Developer') => {
-    const roleMapping: Record<string, { name: string; email: string; role: UserRole }> = {
-      Admin: { name: 'Sarah Connor (Admin)', email: 'admin@pulsestudio.io', role: 'ADMIN' },
-      PM: { name: 'Alex Mercer (PM)', email: 'pm@pulsestudio.io', role: 'PM' },
-      Developer: { name: 'Elena Rostova (Dev)', email: 'dev@pulsestudio.io', role: 'DEVELOPER' },
-    };
-
-    const target = roleMapping[role];
-    if (target) {
-      setUser((prev) => ({
-        ...prev,
-        ...target,
-        id: prev?.id || 'usr-demo',
-      }));
-    }
-  };
-
   return (
     <AuthContext.Provider
       value={{
@@ -100,7 +83,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         login,
         logout,
         hasRole,
-        switchDemoRole,
       }}
     >
       {children}

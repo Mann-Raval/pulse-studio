@@ -5,6 +5,7 @@ import {
   logout,
   register,
   getMe,
+  getUsers,
 } from '../controllers/auth.controller.js';
 import { validateBody } from '../middlewares/validate.middleware.js';
 import { authenticate } from '../middlewares/auth.middleware.js';
@@ -20,5 +21,6 @@ router.post('/logout', logout);
 
 // Protected routes
 router.get('/me', authenticate, getMe);
+router.get('/users', authenticate, getUsers);
 
 export default router;

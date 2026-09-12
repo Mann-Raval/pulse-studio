@@ -13,4 +13,5 @@ router.post('/refresh', auth_controller_js_1.refresh);
 router.post('/logout', auth_controller_js_1.logout);
 // Protected routes
 router.get('/me', auth_middleware_js_1.authenticate, auth_controller_js_1.getMe);
+router.get('/users', auth_middleware_js_1.authenticate, auth_controller_js_1.getUsers);
 exports.default = router;

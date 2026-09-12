@@ -1,6 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.requireRole = exports.authenticate = void 0;
+const client_1 = require("@prisma/client");
 const token_js_1 = require("../utils/token.js");
 const authenticate = (req, res, next) => {
     const authHeader = req.headers.authorization;
@@ -44,7 +45,9 @@ const requireRole = (...allowedRoles) => {
             });
             return;
         }
-        if (!allowedRoles.includes(req.user.role)) {
+        // ADMIN has hierarchical superuser bypass matching frontend hasRole
+        const isAllowed = allowedRoles.includes(req.user.role) || req.user.role === client_1.Role.ADMIN;
+        if (!isAllowed) {
             res.status(403).json({
                 error: {
                     code: 'FORBIDDEN',

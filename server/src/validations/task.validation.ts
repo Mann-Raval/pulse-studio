@@ -65,6 +65,7 @@ export const taskIdParamSchema = z.object({
 });
 
 export const taskQuerySchema = z.object({
+  projectId: z.string().trim().optional(),
   status: z
     .nativeEnum(TaskStatus, {
       errorMap: () => ({ message: 'Invalid status filter' }),
@@ -75,6 +76,7 @@ export const taskQuerySchema = z.object({
       errorMap: () => ({ message: 'Invalid priority filter' }),
     })
     .optional(),
+  isOverdue: z.string().optional(),
   dueBefore: z.string().optional(),
   dueAfter: z.string().optional(),
   assignedToId: z.string().trim().optional(),

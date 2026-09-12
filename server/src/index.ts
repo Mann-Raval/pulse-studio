@@ -3,12 +3,16 @@ import { createApp } from './app.js';
 import { config } from './config/index.js';
 import { prisma } from './lib/prisma.js';
 import { initSocketServer } from './socket/index.js';
+import { startOverdueTaskChecker } from './jobs/overdueTaskChecker.js';
 
 const app = createApp();
 const server = http.createServer(app);
 
 // Initialize Socket.io real-time engine
 initSocketServer(server);
+
+// Start background cron jobs
+const overdueJob = startOverdueTaskChecker();
 
 server.listen(config.PORT, () => {
   console.log(`🚀 Pulse Studio API server listening on http://localhost:${config.PORT}`);

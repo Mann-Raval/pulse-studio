@@ -8,10 +8,13 @@ const app_js_1 = require("./app.js");
 const index_js_1 = require("./config/index.js");
 const prisma_js_1 = require("./lib/prisma.js");
 const index_js_2 = require("./socket/index.js");
+const overdueTaskChecker_js_1 = require("./jobs/overdueTaskChecker.js");
 const app = (0, app_js_1.createApp)();
 const server = http_1.default.createServer(app);
 // Initialize Socket.io real-time engine
 (0, index_js_2.initSocketServer)(server);
+// Start background cron jobs
+const overdueJob = (0, overdueTaskChecker_js_1.startOverdueTaskChecker)();
 server.listen(index_js_1.config.PORT, () => {
     console.log(`🚀 Pulse Studio API server listening on http://localhost:${index_js_1.config.PORT}`);
     console.log(`📡 WebSocket server initialized on same port`);

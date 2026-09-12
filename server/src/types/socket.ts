@@ -40,6 +40,15 @@ export interface PresenceUpdatePayload {
   users: PresenceUser[];
 }
 
+export interface TaskOverduePayload {
+  taskId: string;
+  projectId: string;
+  taskTitle: string;
+  assignedToId: string | null;
+  dueDate: string | Date | null;
+  isOverdue: boolean;
+}
+
 // Client-to-Server Events
 export interface ClientToServerEvents {
   'join:project': (data: { projectId: string }, callback?: (response: { success: boolean; message?: string }) => void) => void;
@@ -54,6 +63,7 @@ export interface ServerToClientEvents {
   'notification:count': (payload: NotificationCountPayload) => void;
   'presence:update': (payload: PresenceUpdatePayload) => void;
   'sync:response': (activities: ActivityPayload[]) => void;
+  'task:overdue': (payload: TaskOverduePayload) => void;
   'error': (error: { code: string; message: string }) => void;
 }
 

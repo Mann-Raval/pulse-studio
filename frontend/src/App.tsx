@@ -10,13 +10,17 @@ import {
 import { ProtectedRoute } from './components/auth/ProtectedRoute';
 import { AuthProvider } from './context/AuthContext';
 import { SocketProvider } from './context/SocketContext';
+import { ThemeProvider } from './context/ThemeContext';
+import { SearchProvider } from './context/SearchContext';
 
 export function App() {
   return (
     <BrowserRouter>
-      <AuthProvider>
-        <SocketProvider>
-          <Routes>
+      <ThemeProvider>
+        <AuthProvider>
+          <SocketProvider>
+            <SearchProvider>
+              <Routes>
             {/* Public Authentication Route */}
             <Route path="/" element={<SignInScreen />} />
 
@@ -69,9 +73,11 @@ export function App() {
             {/* Fallback redirect */}
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
-        </SocketProvider>
-      </AuthProvider>
-    </BrowserRouter>
+        </SearchProvider>
+      </SocketProvider>
+    </AuthProvider>
+  </ThemeProvider>
+</BrowserRouter>
   );
 }
 

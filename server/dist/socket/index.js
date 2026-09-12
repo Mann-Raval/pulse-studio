@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.broadcastNotification = exports.broadcastTaskActivity = exports.getIO = exports.initSocketServer = void 0;
+exports.broadcastNotification = exports.broadcastTaskOverdue = exports.broadcastTaskActivity = exports.getIO = exports.initSocketServer = void 0;
 const socket_io_1 = require("socket.io");
 const client_1 = require("@prisma/client");
 const index_js_1 = require("../config/index.js");
@@ -232,6 +232,25 @@ const broadcastTaskActivity = (activity, assignedToId) => {
     }
 };
 exports.broadcastTaskActivity = broadcastTaskActivity;
+/**
+ * Broadcasts task overdue event to relevant role-scoped rooms.
+ * - activity:global (Admin sees all)
+ * - activity:project:<projectId> (Anyone viewing the project board)
+ * - activity:dev:<assignedToId> (Assignee developer if set)
+ */
+const broadcastTaskOverdue = (payload, assignedToId) => {
+    if (!io)
+        return;
+    // 1. Global room for Admins
+    io.to('activity:global').emit('task:overdue', payload);
+    // 2. Project room for board viewers
+    io.to(`activity:project:${payload.projectId}`).emit('task:overdue', payload);
+    // 3. Developer room for the assigned developer
+    if (assignedToId) {
+        io.to(`activity:dev:${assignedToId}`).emit('task:overdue', payload);
+    }
+};
+exports.broadcastTaskOverdue = broadcastTaskOverdue;
 /**
  * Emits a notification and updated unread count to a specific user.
  */

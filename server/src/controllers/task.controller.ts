@@ -68,8 +68,8 @@ export const createTask = async (
       }
     }
 
-    // Atomic transaction: create Task + create Notification for developer if assigned
-    const { task: createdTask, notification } = await prisma.$transaction(async (tx) => {
+    // Atomic transaction: create Task + activity log + notification for developer if assigned
+    const { task: createdTask, notification, activityLog } = await prisma.$transaction(async (tx) => {
       const task = await tx.task.create({
         data: {
           projectId,
@@ -90,6 +90,20 @@ export const createTask = async (
         },
       });
 
+      const log = await tx.taskActivityLog.create({
+        data: {
+          taskId: task.id,
+          changedById: userId,
+          fromStatus: task.status,
+          toStatus: task.status,
+        },
+        include: {
+          changedBy: {
+            select: { id: true, name: true, email: true, role: true },
+          },
+        },
+      });
+
       let createdNotification: Notification | null = null;
       if (assignedToId) {
         createdNotification = await tx.notification.create({
@@ -102,10 +116,28 @@ export const createTask = async (
         });
       }
 
-      return { task, notification: createdNotification };
+      return { task, notification: createdNotification, activityLog: log };
     });
 
     // Real-time WebSocket emission after successful commit
+    broadcastTaskActivity(
+      {
+        id: activityLog.id,
+        taskId: createdTask.id,
+        taskTitle: createdTask.title,
+        projectId: createdTask.projectId,
+        projectName: createdTask.project.name,
+        changedBy: {
+          id: activityLog.changedBy.id,
+          name: activityLog.changedBy.name,
+        },
+        fromStatus: activityLog.fromStatus,
+        toStatus: activityLog.toStatus,
+        changedAt: activityLog.changedAt,
+      },
+      createdTask.assignedToId
+    );
+
     if (notification && assignedToId) {
       broadcastNotification(assignedToId, notification);
     }
@@ -189,6 +221,100 @@ export const getProjectTasks = async (
     }
 
     // Allow ADMIN / PM to filter by a specific assignee
+    if (assignedToId && userRole !== Role.DEVELOPER) {
+      where.assignedToId = assignedToId as string;
+    }
+
+    const [total, tasks] = await Promise.all([
+      prisma.task.count({ where }),
+      prisma.task.findMany({
+        where,
+        skip,
+        take: limit,
+        orderBy: { createdAt: 'desc' },
+        include: {
+          assignedTo: {
+            select: { id: true, name: true, email: true, role: true },
+          },
+          project: {
+            select: { id: true, name: true, createdById: true },
+          },
+          _count: {
+            select: { activityLogs: true },
+          },
+        },
+      }),
+    ]);
+
+    res.status(200).json({
+      tasks,
+      pagination: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit) || 1,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const listTasks = async (
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const userRole = req.user!.role;
+    const userId = req.user!.id;
+
+    const { status, priority, dueBefore, dueAfter, assignedToId, projectId, isOverdue } = req.query;
+    const page = Math.max(1, Number(req.query.page) || 1);
+    const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 20));
+    const skip = (page - 1) * limit;
+
+    // Database-level role-scoping:
+    // - DEVELOPER: ONLY sees tasks assigned to their own user id
+    // - PM: sees tasks belonging to projects created by this PM
+    // - ADMIN: sees all tasks
+    const where: Prisma.TaskWhereInput = {
+      ...(userRole === Role.DEVELOPER ? { assignedToId: userId } : {}),
+      ...(userRole === Role.PM ? { project: { createdById: userId } } : {}),
+    };
+
+    if (projectId) {
+      if (userRole === Role.PM) {
+        where.projectId = projectId as string;
+        where.project = { createdById: userId };
+      } else if (userRole === Role.ADMIN || userRole === Role.DEVELOPER) {
+        where.projectId = projectId as string;
+      }
+    }
+
+    if (status) {
+      where.status = status as TaskStatus;
+    }
+
+    if (priority) {
+      where.priority = priority as any;
+    }
+
+    if (isOverdue !== undefined) {
+      where.isOverdue = isOverdue === 'true';
+    }
+
+    const dueDateFilter: Prisma.DateTimeNullableFilter = {};
+    if (dueBefore) {
+      dueDateFilter.lte = new Date(dueBefore as string);
+    }
+    if (dueAfter) {
+      dueDateFilter.gte = new Date(dueAfter as string);
+    }
+    if (Object.keys(dueDateFilter).length > 0) {
+      where.dueDate = dueDateFilter;
+    }
+
     if (assignedToId && userRole !== Role.DEVELOPER) {
       where.assignedToId = assignedToId as string;
     }
@@ -408,6 +534,8 @@ export const updateTaskStatus = async (
       });
 
       let pmNotification: Notification | null = null;
+      let devNotification: Notification | null = null;
+
       // If new status is IN_REVIEW, notify the project's PM
       if (newStatus === TaskStatus.IN_REVIEW && oldStatus !== TaskStatus.IN_REVIEW) {
         pmNotification = await tx.notification.create({
@@ -420,7 +548,28 @@ export const updateTaskStatus = async (
         });
       }
 
-      return { task: updatedTask, activityLog, pmNotification };
+      // If status changed by PM/Admin and task is assigned to a developer, notify the developer
+      if (task.assignedToId && task.assignedToId !== userId) {
+        const statusLabel =
+          newStatus === 'TODO'
+            ? 'To Do'
+            : newStatus === 'IN_PROGRESS'
+            ? 'In Progress'
+            : newStatus === 'IN_REVIEW'
+            ? 'In Review'
+            : 'Done';
+
+        devNotification = await tx.notification.create({
+          data: {
+            userId: task.assignedToId,
+            type: 'TASK_ASSIGNED',
+            message: `Task "${task.title}" status updated to ${statusLabel}`,
+            relatedTaskId: task.id,
+          },
+        });
+      }
+
+      return { task: updatedTask, activityLog, pmNotification, devNotification };
     });
 
     // Real-time WebSocket emission after successful transaction commit
@@ -444,6 +593,10 @@ export const updateTaskStatus = async (
 
     if (result.pmNotification) {
       broadcastNotification(result.pmNotification.userId, result.pmNotification);
+    }
+
+    if (result.devNotification && result.task.assignedToId) {
+      broadcastNotification(result.task.assignedToId, result.devNotification);
     }
 
     res.status(200).json({ task: result.task, activityLog: result.activityLog });

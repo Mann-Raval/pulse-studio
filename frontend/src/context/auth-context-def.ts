@@ -9,7 +9,6 @@ export interface AuthContextType {
   login: (credentials: { email: string; password: string }) => Promise<User>;
   logout: () => Promise<void>;
   hasRole: (allowedRoles?: UserRole[]) => boolean;
-  switchDemoRole: (role: 'Admin' | 'PM' | 'Developer') => void;
 }
 
 export const AuthContext = createContext<AuthContextType | undefined>(undefined);
