@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
-
+import type { UserRole } from '../types';
 
 export interface SignInScreenProps {
   onSignIn?: (credentials: { email: string; pass: string }) => void;
@@ -14,13 +14,49 @@ export const SignInScreen: React.FC<SignInScreenProps> = ({
   clusterRegion = 'US-EAST-1',
 }) => {
   const navigate = useNavigate();
-  const { login } = useAuth();
+  const { login, register } = useAuth();
 
+  const [mode, setMode] = useState<'signin' | 'register'>('signin');
   const [showPassword, setShowPassword] = useState(false);
+  
+  // Sign in / Registration fields
+  const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [role, setRole] = useState<UserRole>('ADMIN');
+
   const [isLoading, setIsLoading] = useState(false);
+  const [quickLoadingRole, setQuickLoadingRole] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  const routeByRole = (userRole: string) => {
+    const roleLower = String(userRole).toLowerCase();
+    if (roleLower === 'admin') {
+      navigate('/dashboard');
+    } else if (roleLower === 'pm') {
+      navigate('/pm');
+    } else {
+      navigate('/developer');
+    }
+  };
+
+  const handleQuickDemoLogin = async (demoEmail: string, demoRole: string) => {
+    setErrorMessage(null);
+    setQuickLoadingRole(demoRole);
+    setIsLoading(true);
+    setEmail(demoEmail);
+    setPassword('password123');
+
+    try {
+      const user = await login({ email: demoEmail, password: 'password123' });
+      routeByRole(user.role);
+    } catch (err: any) {
+      setErrorMessage(err.message || 'Unable to log into demo account. Please check server connection.');
+    } finally {
+      setIsLoading(false);
+      setQuickLoadingRole(null);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -28,18 +64,20 @@ export const SignInScreen: React.FC<SignInScreenProps> = ({
     setIsLoading(true);
 
     try {
-      const user = await login({ email, password });
-      const roleLower = String(user.role).toLowerCase();
-
-      if (roleLower === 'admin') {
-        navigate('/dashboard');
-      } else if (roleLower === 'pm') {
-        navigate('/pm');
+      if (mode === 'signin') {
+        const user = await login({ email, password });
+        routeByRole(user.role);
       } else {
-        navigate('/developer');
+        const user = await register({ name, email, password, role });
+        routeByRole(user.role);
       }
     } catch (err: any) {
-      setErrorMessage(err.message || 'Invalid email or password. Please try again.');
+      setErrorMessage(
+        err.message ||
+          (mode === 'signin'
+            ? 'Invalid email or password. Please try again.'
+            : 'Registration failed. Please verify your details.')
+      );
     } finally {
       setIsLoading(false);
     }
@@ -48,7 +86,7 @@ export const SignInScreen: React.FC<SignInScreenProps> = ({
   return (
     <div className="flex h-screen w-screen overflow-hidden select-none bg-surface-container-lowest">
       {/* Left Sign-in Form */}
-      <div className="w-full lg:w-1/2 h-full flex flex-col justify-between px-8 sm:px-14 lg:px-20 py-8 bg-surface-container-lowest border-r border-outline-variant/30 relative z-10 telemetry-grid">
+      <div className="w-full lg:w-1/2 h-full flex flex-col justify-between px-6 sm:px-12 lg:px-16 py-6 bg-surface-container-lowest border-r border-outline-variant/30 relative z-10 telemetry-grid overflow-y-auto">
         <header className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 rounded-sm bg-surface-container-high border border-outline-variant/60 flex items-center justify-center relative overflow-hidden shadow-inner">
@@ -70,12 +108,106 @@ export const SignInScreen: React.FC<SignInScreenProps> = ({
           </div>
         </header>
 
-        <main className="w-full max-w-md mx-auto my-auto py-4">
-          <div className="mb-6">
-            <h1 className="text-2xl font-bold text-on-surface tracking-tight">Welcome back</h1>
-            <p className="text-xs text-on-surface-variant mt-1.5">
-              Sign in with your Pulse Studio credentials to access live ops.
+        <main className="w-full max-w-md mx-auto my-4">
+          {/* Header titles */}
+          <div className="mb-4">
+            <h1 className="text-2xl font-bold text-on-surface tracking-tight">
+              {mode === 'signin' ? 'Welcome to Pulse' : 'Create an Account'}
+            </h1>
+            <p className="text-xs text-on-surface-variant mt-1">
+              {mode === 'signin'
+                ? 'Sign in or select a 1-click demo role below to evaluate live features.'
+                : 'Register a new profile to access live telemetry and sprint boards.'}
             </p>
+          </div>
+
+          {/* ⚡ 1-Click Demo Profiles (For Recruiters / Portfolio Evaluation) */}
+          <div className="mb-4 p-3 rounded-sm bg-surface-container-low border border-outline-variant/50">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-[10px] font-mono uppercase tracking-wider text-primary font-semibold flex items-center gap-1.5">
+                <span className="material-symbols-outlined text-xs">bolt</span>
+                1-Click Demo Access
+              </span>
+              <span className="text-[10px] font-mono text-on-surface-variant/70">Instant Login</span>
+            </div>
+            <div className="grid grid-cols-3 gap-1.5">
+              <button
+                type="button"
+                onClick={() => handleQuickDemoLogin('admin@pulsestudio.io', 'Admin')}
+                disabled={isLoading}
+                className="flex flex-col items-center justify-center p-2 rounded-sm bg-surface-container hover:bg-surface-container-high border border-outline-variant/40 hover:border-primary/50 text-on-surface transition-all active:scale-[0.98] disabled:opacity-50 text-center"
+              >
+                <div className="flex items-center gap-1">
+                  <span className="text-xs">👑</span>
+                  <span className="text-[11px] font-bold text-primary">Admin</span>
+                </div>
+                <span className="text-[9px] font-mono text-on-surface-variant mt-0.5 truncate w-full">
+                  {quickLoadingRole === 'Admin' ? 'Loading...' : 'Sarah C.'}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleQuickDemoLogin('pm@pulsestudio.io', 'PM')}
+                disabled={isLoading}
+                className="flex flex-col items-center justify-center p-2 rounded-sm bg-surface-container hover:bg-surface-container-high border border-outline-variant/40 hover:border-secondary/50 text-on-surface transition-all active:scale-[0.98] disabled:opacity-50 text-center"
+              >
+                <div className="flex items-center gap-1">
+                  <span className="text-xs">📁</span>
+                  <span className="text-[11px] font-bold text-secondary">PM</span>
+                </div>
+                <span className="text-[9px] font-mono text-on-surface-variant mt-0.5 truncate w-full">
+                  {quickLoadingRole === 'PM' ? 'Loading...' : 'Alex M.'}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleQuickDemoLogin('dev@pulsestudio.io', 'Developer')}
+                disabled={isLoading}
+                className="flex flex-col items-center justify-center p-2 rounded-sm bg-surface-container hover:bg-surface-container-high border border-outline-variant/40 hover:border-tertiary/50 text-on-surface transition-all active:scale-[0.98] disabled:opacity-50 text-center"
+              >
+                <div className="flex items-center gap-1">
+                  <span className="text-xs">💻</span>
+                  <span className="text-[11px] font-bold text-tertiary">Developer</span>
+                </div>
+                <span className="text-[9px] font-mono text-on-surface-variant mt-0.5 truncate w-full">
+                  {quickLoadingRole === 'Developer' ? 'Loading...' : 'Elena R.'}
+                </span>
+              </button>
+            </div>
+          </div>
+
+          {/* Mode Switcher Tabs */}
+          <div className="flex rounded-sm bg-surface-container-low p-0.5 mb-4 border border-outline-variant/40">
+            <button
+              type="button"
+              onClick={() => {
+                setMode('signin');
+                setErrorMessage(null);
+              }}
+              className={`flex-1 py-1.5 text-xs font-medium rounded-sm transition-all ${
+                mode === 'signin'
+                  ? 'bg-surface-container-high text-on-surface shadow-sm font-semibold'
+                  : 'text-on-surface-variant hover:text-on-surface'
+              }`}
+            >
+              Sign In
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setMode('register');
+                setErrorMessage(null);
+              }}
+              className={`flex-1 py-1.5 text-xs font-medium rounded-sm transition-all ${
+                mode === 'register'
+                  ? 'bg-surface-container-high text-on-surface shadow-sm font-semibold'
+                  : 'text-on-surface-variant hover:text-on-surface'
+              }`}
+            >
+              Create Account
+            </button>
           </div>
 
           {errorMessage && (
@@ -85,9 +217,26 @@ export const SignInScreen: React.FC<SignInScreenProps> = ({
             </div>
           )}
 
-          <form className="space-y-4" onSubmit={handleSubmit}>
+          <form className="space-y-3" onSubmit={handleSubmit}>
+            {mode === 'register' && (
+              <div>
+                <label className="block text-[11px] font-mono text-on-surface mb-1">Full Name</label>
+                <div className="relative flex items-center">
+                  <span className="material-symbols-outlined absolute left-3 text-outline text-base">person</span>
+                  <input
+                    className="w-full h-9 pl-9 pr-3 bg-surface-container-low rounded-sm border border-outline-variant/60 text-on-surface text-xs focus:outline-none focus:border-primary"
+                    type="text"
+                    placeholder="e.g. John Doe"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    required
+                  />
+                </div>
+              </div>
+            )}
+
             <div>
-              <label className="block text-[11px] font-mono text-on-surface mb-1.5">Work Email</label>
+              <label className="block text-[11px] font-mono text-on-surface mb-1">Work Email</label>
               <div className="relative flex items-center">
                 <span className="material-symbols-outlined absolute left-3 text-outline text-base">mail</span>
                 <input
@@ -102,14 +251,18 @@ export const SignInScreen: React.FC<SignInScreenProps> = ({
             </div>
 
             <div>
-              <div className="flex items-center justify-between mb-1.5">
+              <div className="flex items-center justify-between mb-1">
                 <label className="block text-[11px] font-mono text-on-surface">Password</label>
+                {mode === 'register' && (
+                  <span className="text-[10px] font-mono text-on-surface-variant">Min. 8 characters</span>
+                )}
               </div>
               <div className="relative flex items-center">
                 <span className="material-symbols-outlined absolute left-3 text-outline text-base">lock</span>
                 <input
                   className="w-full h-9 pl-9 pr-10 bg-surface-container-low rounded-sm border border-outline-variant/60 text-on-surface text-xs focus:outline-none focus:border-primary"
                   type={showPassword ? 'text' : 'password'}
+                  placeholder="••••••••"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   required
@@ -126,36 +279,84 @@ export const SignInScreen: React.FC<SignInScreenProps> = ({
               </div>
             </div>
 
-            <div className="flex items-center justify-between pt-1">
-              <label className="flex items-center gap-2 cursor-pointer text-xs text-on-surface-variant">
-                <input
-                  defaultChecked
-                  type="checkbox"
-                  className="w-3.5 h-3.5 rounded-sm border-outline-variant bg-surface-container text-primary"
-                />
-                <span>Remember session</span>
-              </label>
-              <span className="text-[11px] font-mono text-outline">JWT Encrypted</span>
-            </div>
+            {mode === 'register' && (
+              <div>
+                <label className="block text-[11px] font-mono text-on-surface mb-1.5">Assign Workspace Role</label>
+                <div className="grid grid-cols-3 gap-1.5">
+                  {[
+                    { id: 'ADMIN' as UserRole, label: 'Admin', icon: '👑', desc: 'Full Visibility' },
+                    { id: 'PM' as UserRole, label: 'PM', icon: '📁', desc: 'Sprint Lead' },
+                    { id: 'DEVELOPER' as UserRole, label: 'Developer', icon: '💻', desc: 'Task Board' },
+                  ].map((r) => (
+                    <button
+                      key={r.id}
+                      type="button"
+                      onClick={() => setRole(r.id)}
+                      className={`p-2 rounded-sm border text-left flex flex-col transition-all ${
+                        role === r.id
+                          ? 'border-primary bg-primary/10 text-primary'
+                          : 'border-outline-variant/40 bg-surface-container-low text-on-surface-variant hover:border-outline-variant'
+                      }`}
+                    >
+                      <div className="flex items-center gap-1">
+                        <span className="text-xs">{r.icon}</span>
+                        <span className="text-xs font-semibold">{r.label}</span>
+                      </div>
+                      <span className="text-[9px] font-mono text-on-surface-variant/80 mt-0.5">{r.desc}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {mode === 'signin' && (
+              <div className="flex items-center justify-between pt-1">
+                <label className="flex items-center gap-2 cursor-pointer text-xs text-on-surface-variant">
+                  <input
+                    defaultChecked
+                    type="checkbox"
+                    className="w-3.5 h-3.5 rounded-sm border-outline-variant bg-surface-container text-primary"
+                  />
+                  <span>Remember session</span>
+                </label>
+                <span className="text-[11px] font-mono text-outline">JWT Encrypted</span>
+              </div>
+            )}
 
             <button
               type="submit"
               disabled={isLoading}
-              className="w-full h-9 mt-2 flex items-center justify-center gap-2 rounded-sm bg-primary hover:bg-inverse-primary disabled:opacity-50 text-white text-xs font-semibold transition-all shadow-md active:scale-[0.99]"
+              className="w-full h-9 mt-3 flex items-center justify-center gap-2 rounded-sm bg-primary hover:bg-inverse-primary disabled:opacity-50 text-white text-xs font-semibold transition-all shadow-md active:scale-[0.99]"
             >
-              {isLoading ? (
+              {isLoading && !quickLoadingRole ? (
                 <>
                   <span className="material-symbols-outlined animate-spin text-sm">progress_activity</span>
-                  <span>Authenticating...</span>
+                  <span>{mode === 'signin' ? 'Authenticating...' : 'Creating Account...'}</span>
                 </>
               ) : (
                 <>
-                  <span>Sign in to Workspace</span>
+                  <span>{mode === 'signin' ? 'Sign in to Workspace' : 'Create & Launch Workspace'}</span>
                   <span className="material-symbols-outlined text-sm">arrow_forward</span>
                 </>
               )}
             </button>
           </form>
+
+          {/* Quick Credential Hint */}
+          <div className="mt-4 pt-3 border-t border-outline-variant/20 flex items-center justify-between text-[11px] font-mono text-on-surface-variant/70">
+            <span>Demo Password: <strong className="text-on-surface">password123</strong></span>
+            <button
+              type="button"
+              onClick={() => {
+                setEmail('admin@pulsestudio.io');
+                setPassword('password123');
+                setMode('signin');
+              }}
+              className="text-primary hover:underline"
+            >
+              Auto-fill Admin
+            </button>
+          </div>
         </main>
 
         <footer className="flex flex-col sm:flex-row items-center justify-between pt-4 border-t border-outline-variant/30 text-outline text-[11px] font-mono">

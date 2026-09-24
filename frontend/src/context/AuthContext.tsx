@@ -51,6 +51,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const register = async (data: { name: string; email: string; password: string; role?: string }): Promise<User> => {
+    setIsLoading(true);
+    try {
+      await api.register(data);
+      // Auto-login upon successful account creation
+      const res = await api.login({ email: data.email, password: data.password });
+      api.setToken(res.accessToken);
+      setToken(res.accessToken);
+      setUser(res.user);
+      setIsLoading(false);
+      return res.user;
+    } catch (err) {
+      setIsLoading(false);
+      throw err;
+    }
+  };
+
   const logout = async () => {
     try {
       await api.logout();
@@ -81,6 +98,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         isAuthenticated: !!user,
         isLoading,
         login,
+        register,
         logout,
         hasRole,
       }}

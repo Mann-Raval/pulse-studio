@@ -79,6 +79,13 @@ class ApiClient {
   }
 
   // Auth endpoints
+  public register(data: { name: string; email: string; password: string; role?: string }) {
+    return this.request<{ user: any }>('/auth/register', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
   public login(credentials: { email: string; password: string }) {
     return this.request<{ accessToken: string; user: any }>('/auth/login', {
       method: 'POST',
