@@ -1,83 +1,8 @@
+import { ApiClient } from './api-client';
+
 const API_BASE = import.meta.env.VITE_API_URL?.replace(/\/+$/, '') || '/api';
 
-class ApiClient {
-  private token: string | null = null;
-
-  constructor() {
-    this.token = localStorage.getItem('pulse_access_token');
-  }
-
-  public setToken(token: string | null) {
-    this.token = token;
-    if (token) {
-      localStorage.setItem('pulse_access_token', token);
-    } else {
-      localStorage.removeItem('pulse_access_token');
-    }
-  }
-
-  public getToken(): string | null {
-    return this.token || localStorage.getItem('pulse_access_token');
-  }
-
-  private async request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-      ...(options.headers as Record<string, string>),
-    };
-
-    const currentToken = this.getToken();
-    if (currentToken) {
-      headers['Authorization'] = `Bearer ${currentToken}`;
-    }
-
-    const response = await fetch(`${API_BASE}${endpoint}`, {
-      ...options,
-      headers,
-      credentials: 'include',
-    });
-
-    if (response.status === 401 && endpoint !== '/auth/login' && endpoint !== '/auth/refresh') {
-      // Attempt token refresh
-      try {
-        const refreshRes = await fetch(`${API_BASE}/auth/refresh`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-        });
-
-        if (refreshRes.ok) {
-          const refreshData = await refreshRes.json();
-          this.setToken(refreshData.accessToken);
-          // Retry original request with new token
-          headers['Authorization'] = `Bearer ${refreshData.accessToken}`;
-          const retryRes = await fetch(`${API_BASE}${endpoint}`, {
-            ...options,
-            headers,
-            credentials: 'include',
-          });
-          const retryData = await retryRes.json();
-          if (!retryRes.ok) {
-            throw retryData.error || { message: 'API request failed' };
-          }
-          return retryData as T;
-        } else {
-          this.setToken(null);
-        }
-      } catch {
-        this.setToken(null);
-      }
-    }
-
-    const data = await response.json().catch(() => ({}));
-
-    if (!response.ok) {
-      throw data.error || { message: `Request failed with status ${response.status}` };
-    }
-
-    return data as T;
-  }
-
+class PulseApi extends ApiClient {
   // Auth endpoints
   public register(data: { name: string; email: string; password: string; role?: string }) {
     return this.request<{ user: any }>('/auth/register', {
@@ -284,4 +209,4 @@ class ApiClient {
   }
 }
 
-export const api = new ApiClient();
+export const api = new PulseApi(API_BASE);
