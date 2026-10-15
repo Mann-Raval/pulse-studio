@@ -309,4 +309,16 @@ In the interest of full technical transparency, the following architectural cons
 
 ---
 
+## 8. Tech Stack
+
+- **Frontend**: React 18, TypeScript, Vite, Tailwind CSS, Material Symbols Icons
+- **Backend**: Node.js, Express, TypeScript, `tsx`
+- **Database & ORM**: PostgreSQL 16, Prisma ORM
+- **Real-Time Layer**: Socket.io Client & Server
+- **Authentication & Security**: JWT (Access Tokens), HttpOnly Signed Cookies (Refresh Tokens), `bcryptjs`, Zod Schema Validation
+- **Background Workers**: `node-cron`
+- **Infrastructure & Hosting**:
+  - **Frontend**: [Vercel](https://vercel.com)
+  - **Backend & Database**: [Railway](https://railway.app)
+  - **Local Development**: Docker Compose
 
