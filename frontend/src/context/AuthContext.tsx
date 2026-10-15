@@ -9,6 +9,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
+    const unsubscribe = api.subscribeToken((nextToken) => {
+      setToken(nextToken);
+      if (!nextToken) setUser(null);
+    });
+
     const initializeAuth = async () => {
       const savedToken = api.getToken();
       if (savedToken) {
@@ -16,7 +21,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           const res = await api.getMe();
           if (res.user) {
             setUser(res.user);
-            setToken(savedToken);
+            setToken(api.getToken());
           } else {
             api.setToken(null);
             setToken(null);
@@ -34,6 +39,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
 
     initializeAuth();
+    return unsubscribe;
   }, []);
 
   const login = async (credentials: { email: string; password: string }): Promise<User> => {
